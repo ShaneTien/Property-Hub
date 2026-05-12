@@ -91,8 +91,10 @@ def load_masterplan():
 
 
 @st.cache_data(ttl=86400)
+@st.cache_data(ttl=1)
 def load_mrt_stations():
-    dataset_id = "d_b39d3a0871985372d7e1637193335da5"
+    """Load MRT/LRT stations from URA Master Plan 2025 rail station polygons."""
+    dataset_id = "d_2c06c9fe8ae724b5d33efa1f203e2c38"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(10):
         r = requests.get(poll_url).json()
@@ -100,20 +102,28 @@ def load_mrt_stations():
             url = r.get("data", {}).get("url")
             if url:
                 geojson  = requests.get(url).json()
+                seen     = set()
                 stations = []
                 for f in geojson.get("features", []):
                     props = f.get("properties", {})
-                    geom  = f.get("geometry", {})
-                    if geom.get("type") == "Point":
-                        lon_s, lat_s = geom["coordinates"]
-                        stations.append({
-                            "name":      props.get("EXIT_CODE", "") + " " + props.get("STN_NAME", ""),
-                            "latitude":  lat_s,
-                            "longitude": lon_s,
-                            "theme":     "mrt_station",
-                            "color":     [0, 102, 204, 240],
-                            "group":     "🚇 Transport (MRT/LRT)",
-                        })
+                    name  = props.get("NAME", "")
+                    if not name or name in seen:
+                        continue
+                    seen.add(name)
+                    geom   = f.get("geometry", {})
+                    coords = geom.get("coordinates", [[]])
+                    try:
+                        flat  = coords[0]
+                        lon_s = sum(c[0] for c in flat) / len(flat)
+                        lat_s = sum(c[1] for c in flat) / len(flat)
+                    except:
+                        continue
+                    stations.append({
+                        "name":      name,
+                        "rail_type": props.get("RAIL_TYPE", "MRT"),
+                        "latitude":  lat_s,
+                        "longitude": lon_s,
+                    })
                 return stations
         time.sleep(2)
     return []
