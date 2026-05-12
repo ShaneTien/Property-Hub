@@ -355,31 +355,44 @@ if show_mp and center_lat:
             )
 
 # ── DEMOGRAPHICS PANEL ───────────────────────────────────
-if show_demo and demo_data and center_lat:
+if show_demo and demo_data:
     st.markdown("---")
     st.markdown("### 🏘️ Demographics")
 
-    # Find planning area containing search point
-    from utils import haversine as _hav
-    closest = min(demo_data, key=lambda x: _hav(
-        center_lat, center_lon,
-        sum(c[1] for c in (x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"])) /
-        len(x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"]),
-        sum(c[0] for c in (x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"])) /
-        len(x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"])
-    ), default=None)
+    # Find closest planning area to search point if available
+    if center_lat:
+        def get_centroid_coords(x):
+            try:
+                coords = x["coordinates"]
+                flat = coords[0] if isinstance(coords[0][0], list) else coords
+                c_lat = sum(c[1] for c in flat) / len(flat)
+                c_lon = sum(c[0] for c in flat) / len(flat)
+                return c_lat, c_lon
+            except:
+                return None, None
 
-    if closest:
-        st.markdown(f"**Planning Area: {closest['planning_area']}**")
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Total Population",  closest["total_pop"])
-        col2.metric("Pop Density /km²",  closest["pop_density"])
-        col3.metric("Young (0-24)",      closest["pct_young"])
-        col4.metric("Elderly (65+)",     closest["pct_elderly"])
-        col5.metric("% Private Housing", closest["pct_private"])
+        closest = None
+        min_dist = float("inf")
+        for pa in demo_data:
+            c_lat, c_lon = get_centroid_coords(pa)
+            if c_lat is None:
+                continue
+            d = haversine(center_lat, center_lon, c_lat, c_lon)
+            if d < min_dist:
+                min_dist = d
+                closest = pa
 
-    # Full table
-    with st.expander("All Planning Areas"):
+        if closest:
+            st.markdown(f"**Planning Area: {closest['planning_area']}**")
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("Total Population",  closest["total_pop"])
+            col2.metric("Pop Density /km²",  closest["pop_density"])
+            col3.metric("Young (0-24)",       closest["pct_young"])
+            col4.metric("Elderly (65+)",      closest["pct_elderly"])
+            col5.metric("% Private Housing",  closest["pct_private"])
+
+    # Full table — always shown
+    with st.expander("All Planning Areas" if center_lat else "Planning Area Demographics"):
         demo_df = pd.DataFrame([{
             "Planning Area":   d["planning_area"],
             "Population":      d["total_pop"],
@@ -390,7 +403,7 @@ if show_demo and demo_data and center_lat:
             "% Private":       d["pct_private"],
         } for d in demo_data]).sort_values("Population", ascending=False).reset_index(drop=True)
         st.dataframe(demo_df, use_container_width=True, hide_index=True)
-
+        
 # ── AMENITIES TABLE ──────────────────────────────────────
 if show_amenities and all_amenity_data:
     st.markdown("---")
