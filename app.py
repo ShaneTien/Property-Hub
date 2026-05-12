@@ -463,6 +463,9 @@ if show_tx and len(filtered) > 0:
     st.markdown("---")
     st.markdown("### 📊 Transaction Analysis")
 
+    import altair as alt
+    import numpy as np
+
     tab1, tab2, tab3, tab4 = st.tabs(["PSF Trend", "Volume", "PSF Distribution", "By Property Type"])
 
     with tab1:
@@ -472,27 +475,40 @@ if show_tx and len(filtered) > 0:
             .reset_index()
             .rename(columns={"date": "Date", "psf": "Median PSF"})
         )
-        trend["Date"] = trend["Date"].dt.strftime("%b %Y")
-        st.line_chart(trend.set_index("Date"))
+        chart = alt.Chart(trend).mark_line(point=True, color="#E8542A").encode(
+            x=alt.X("Date:T", title="", axis=alt.Axis(format="%b %Y", labelAngle=-45)),
+            y=alt.Y("Median PSF:Q", title="Median PSF (S$)"),
+            tooltip=[alt.Tooltip("Date:T", format="%b %Y"), alt.Tooltip("Median PSF:Q", format=",.0f")]
+        ).properties(height=300)
+        st.altair_chart(chart, use_container_width=True)
 
     with tab2:
         vol = (
             filtered.groupby("date")
             .size()
             .reset_index(name="Transactions")
+            .rename(columns={"date": "Date"})
         )
-        vol["date"] = vol["date"].dt.strftime("%b %Y")
-        st.bar_chart(vol.set_index("date"))
+        chart = alt.Chart(vol).mark_bar(color="#4C78A8").encode(
+            x=alt.X("Date:T", title="", axis=alt.Axis(format="%b %Y", labelAngle=-45)),
+            y=alt.Y("Transactions:Q", title="Number of Transactions"),
+            tooltip=[alt.Tooltip("Date:T", format="%b %Y"), "Transactions:Q"]
+        ).properties(height=300)
+        st.altair_chart(chart, use_container_width=True)
 
     with tab3:
-        import numpy as np
         psf_vals = filtered["psf"].dropna()
         hist, edges = np.histogram(psf_vals, bins=40)
         hist_df = pd.DataFrame({
-            "PSF (S$)": [f"${int(e):,}" for e in edges[:-1]],
+            "PSF": edges[:-1].astype(int),
             "Count": hist
         })
-        st.bar_chart(hist_df.set_index("PSF (S$)"))
+        chart = alt.Chart(hist_df).mark_bar(color="#72B7B2").encode(
+            x=alt.X("PSF:Q", title="PSF (S$)", axis=alt.Axis(format=",.0f")),
+            y=alt.Y("Count:Q", title="Number of Transactions"),
+            tooltip=[alt.Tooltip("PSF:Q", format=",.0f"), "Count:Q"]
+        ).properties(height=300)
+        st.altair_chart(chart, use_container_width=True)
 
     with tab4:
         by_type = (
@@ -502,7 +518,12 @@ if show_tx and len(filtered) > 0:
             .reset_index()
             .rename(columns={"property_type": "Property Type", "psf": "Median PSF"})
         )
-        st.bar_chart(by_type.set_index("Property Type"))
+        chart = alt.Chart(by_type).mark_bar(color="#F58518").encode(
+            x=alt.X("Median PSF:Q", title="Median PSF (S$)", axis=alt.Axis(format=",.0f")),
+            y=alt.Y("Property Type:N", sort="-x", title=""),
+            tooltip=["Property Type:N", alt.Tooltip("Median PSF:Q", format=",.0f")]
+        ).properties(height=250)
+        st.altair_chart(chart, use_container_width=True)
 
     st.markdown("---")
     with st.expander("View transaction data"):
