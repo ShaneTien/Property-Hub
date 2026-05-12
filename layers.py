@@ -125,16 +125,18 @@ def build_mrt_layer(stations):
     if not stations:
         return []
     data = [{
-        "name":      s.get("name", ""),
-        "rail_type": s.get("rail_type", "MRT"),
-        "latitude":  s.get("latitude"),
-        "longitude": s.get("longitude"),
+        "name":        s.get("name", ""),
+        "rail_type":   s.get("rail_type", "MRT"),
+        "line_label":  s.get("line_label", ""),
+        "latitude":    s.get("latitude"),
+        "longitude":   s.get("longitude"),
+        "color":       s.get("color", [80, 80, 80, 240]),
     } for s in stations]
     return [pdk.Layer(
         "ScatterplotLayer",
         data=data,
         get_position=["longitude", "latitude"],
-        get_fill_color=[0, 102, 204, 240],
+        get_fill_color="color",
         get_radius=60,
         pickable=True,
         opacity=1.0,
@@ -226,11 +228,11 @@ TOOLTIP_MASTERPLAN = {
     "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
 }
 
-TOOLTIP_MRT = {
+TTOOLTIP_MRT = {
     "html": """
-        <div style='font-size:12px;padding:8px;max-width:200px;line-height:1.8;font-family:sans-serif'>
+        <div style='font-size:12px;padding:8px;max-width:220px;line-height:1.8;font-family:sans-serif'>
         🚇 <b>{name}</b><br/>
-        <span style='color:#666;font-size:11px'>{rail_type}</span>
+        <span style='color:#666;font-size:11px'>{line_label} · {rail_type}</span>
         </div>
     """,
     "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
