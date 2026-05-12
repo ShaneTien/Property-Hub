@@ -235,30 +235,73 @@ def load_onemap_themes(token):
 
 def search_onemap_keyword(keyword, lat, lon, radius_m):
     """Search OneMap for a keyword and return nearby results."""
-    from utils import bbox, haversine
-    lat1, lon1, lat2, lon2 = bbox(lat, lon, radius_m)
-    url = (
-        f"https://www.onemap.gov.sg/api/common/elastic/search"
-        f"?searchVal={keyword}&returnGeom=Y&getAddrDetails=Y&pageNum=1"
-    )
-    try:
-        r = requests.get(url, timeout=10).json()
-        results = []
-        for item in r.get("results", []):
-            try:
-                lat_i = float(item.get("LATITUDE", 0))
-                lon_i = float(item.get("LONGITUDE", 0))
-                dist  = haversine(lat, lon, lat_i, lon_i)
-                if dist <= radius_m:
-                    results.append({
-                        "name":      item.get("BUILDING", item.get("ADDRESS", "")),
-                        "theme":     keyword,
-                        "latitude":  lat_i,
-                        "longitude": lon_i,
-                        "distance":  dist,
-                    })
-            except:
-                pass
-        return results
-    except:
-        return []
+    from utils import haversine
+    results = []
+    # Try multiple pages
+    for page in range(1, 4):
+        url = (
+            f"https://www.onemap.gov.sg/api/common/elastic/search"
+            f"?searchVal={keyword}&returnGeom=Y&getAddrDetails=Y&pageNum={page}"
+        )
+        try:
+            r = requests.get(url, timeout=10).json()
+            items = r.get("results", [])
+            if not items:
+                break
+            for item in items:
+                try:
+                    lat_i = float(item.get("LATITUDE", 0))
+                    lon_i = float(item.get("LONGITUDE", 0))
+                    if lat_i == 0 and lon_i == 0:
+                        continue
+                    dist = haversine(lat, lon, lat_i, lon_i)
+                    if dist <= radius_m:
+                        name = item.get("BUILDING", "").strip()
+                        if not name or name == "NIL":
+                            name = item.get("ADDRESS", "")
+                        results.append({
+                            "name":      name,
+                            "theme":     keyword,
+                            "latitude":  lat_i,
+                            "longitude": lon_i,
+                            "distance":  dist,
+                        })
+                except:
+                    pass
+        except:
+            break
+    # Deduplicate by name
+    seen = set()
+    deduped = []
+    for r in results:
+        if r["name"] not in seen:
+            seen.add(r["name"])
+            deduped.append(r)
+    return deduped
+
+
+@st.cache_data(ttl=86400)
+def load_schools():
+    """Load MOE schools from data.gov.sg."""
+    dataset_id = "d_688b934f82c1059ed0a6993d2a829089"
+    poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
+    for _ in range(10):
+        r = requests.get(poll_url).json()
+        if r.get("code") == 0:
+            url = r.get("data", {}).get("url")
+            if url:
+                data = requests.get(url).json()
+                schools = []
+                for row in data.get("value", data if isinstance(data, list) else []):
+                    try:
+                        schools.append({
+                            "name":      row.get("school_name", ""),
+                            "theme":     row.get("mainlevel_code", ""),
+                            "latitude":  float(row.get("latitude", 0)),
+                            "longitude": float(row.get("longitude", 0)),
+                        })
+                    except:
+                        pass
+                return [s for s in schools if s["latitude"] != 0]
+        time.sleep(2)
+    return []
