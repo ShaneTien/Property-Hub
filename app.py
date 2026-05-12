@@ -2,12 +2,12 @@ import streamlit as st
 import pydeck as pdk
 import pandas as pd
 
-from config import ONEMAP_BASEMAP, AMENITY_GROUPS, LAND_USE_COLORS, DATA_SOURCES
+from config import ONEMAP_BASEMAP, AMENITY_CATEGORY_COLORS, MRT_COLOR, LAND_USE_COLORS, DATA_SOURCES
 from utils import haversine, bbox
 from data_loaders import (
     load_transactions, load_gls, load_masterplan,
     load_mrt_stations, get_onemap_token,
-    geocode_address, load_amenities_onemap
+    geocode_address, load_amenities_onemap, load_onemap_themes
 )
 from layers import (
     build_transaction_layer, build_gls_layer,
@@ -63,14 +63,27 @@ show_mp        = st.sidebar.checkbox("Master Plan 2025", value=False)
 show_amenities = st.sidebar.checkbox("Amenities", value=False)
 amenity_radius_m = st.sidebar.slider("Amenity radius (m)", 250, 2000, 1000, step=250) if show_amenities else 1000
 
-# Amenity group dropdowns
-amenity_group_toggles = {}
-if show_amenities and center_lat:
-    for group_name in AMENITY_GROUPS:
-        with st.sidebar.expander(group_name):
-            amenity_group_toggles[group_name] = st.checkbox(
-                "Show on map", value=True, key=f"am_{group_name}"
-            )
+# Amenity theme selection
+selected_themes = {}
+show_mrt = False
+if show_amenities and center_lat and onemap_token:
+    with st.sidebar.expander("🚇 Transport (MRT/LRT)"):
+        show_mrt = st.checkbox("MRT / LRT Stations", value=True, key="am_mrt")
+
+    with st.spinner("Loading theme list..."):
+        grouped_themes = load_onemap_themes(onemap_token)
+
+    for category, themes in sorted(grouped_themes.items()):
+        color = AMENITY_CATEGORY_COLORS.get(category, [180, 180, 180, 240])
+        with st.sidebar.expander(f"{category} ({len(themes)})"):
+            for theme in sorted(themes, key=lambda x: x["name"]):
+                checked = st.checkbox(
+                    theme["name"],
+                    value=False,
+                    key=f"am_{theme['queryName']}"
+                )
+                if checked:
+                    selected_themes[theme["queryName"]] = color
 elif show_amenities and not center_lat:
     st.sidebar.warning("Search a location to load amenities.")
 
@@ -127,11 +140,11 @@ if show_tx:
     layers += build_transaction_layer(filtered, tx_view)
 
 # Amenities
-if show_amenities and center_lat:
+if show_amenities and center_lat and onemap_token:
     amenity_data = []
 
     # MRT from data.gov.sg
-    if amenity_group_toggles.get("🚇 Transport (MRT/LRT)", False):
+    if show_mrt:
         with st.spinner("Loading MRT stations..."):
             mrt_stations = load_mrt_stations()
         lat1, lon1, lat2, lon2 = bbox(center_lat, center_lon, amenity_radius_m)
@@ -141,23 +154,17 @@ if show_amenities and center_lat:
         ]
         amenity_data.extend(nearby_mrt)
 
-    # OneMap themes
-    if onemap_token:
-        for group_name, group_config in AMENITY_GROUPS.items():
-            if group_name == "🚇 Transport (MRT/LRT)":
-                continue
-            if not amenity_group_toggles.get(group_name, False):
-                continue
-            if not group_config["themes"]:
-                continue
-            items = load_amenities_onemap(
-                onemap_token, group_config["themes"],
-                center_lat, center_lon, amenity_radius_m
-            )
-            for item in items:
-                item["color"] = group_config["color"]
-                item["group"] = group_name
-            amenity_data.extend(items)
+    # Selected OneMap themes
+    if selected_themes:
+        items = load_amenities_onemap(
+            onemap_token,
+            list(selected_themes.keys()),
+            center_lat, center_lon, amenity_radius_m
+        )
+        for item in items:
+            item["color"] = selected_themes.get(item["theme"], [180, 180, 180, 240])
+            item["group"] = item["theme"]
+        amenity_data.extend(items)
 
     layers += build_amenity_layer(amenity_data)
     if amenity_data:
