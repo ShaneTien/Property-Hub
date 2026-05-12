@@ -57,6 +57,35 @@ LAND_USE_COLORS = {
 }
 DEFAULT_COLOR = [220, 220, 220, 120]
 
+# Amenity groups — OneMap theme queryNames grouped by category
+AMENITY_GROUPS = {
+    "🚇 Transport": {
+        "color": [0, 102, 204, 220],
+        "themes": ["mrt_lrt_station", "bus_stops"]
+    },
+    "🏫 Schools": {
+        "color": [0, 153, 0, 220],
+        "themes": ["primary_school", "secondary_school", "junior_colleges", 
+                   "mixed_levels", "international_school"]
+    },
+    "🏥 Healthcare": {
+        "color": [204, 0, 0, 220],
+        "themes": ["registered_hospitals", "polyclinics", "chas_clinics"]
+    },
+    "🛍️ Retail & Malls": {
+        "color": [255, 140, 0, 220],
+        "themes": ["shopping_malls", "supermarkets"]
+    },
+    "🏋️ Sports & Recreation": {
+        "color": [153, 0, 204, 220],
+        "themes": ["sport_facilities", "parks"]
+    },
+    "🏛️ Community": {
+        "color": [204, 153, 0, 220],
+        "themes": ["community_clubs", "libraries", "places_of_worship"]
+    },
+}
+
 # ── DATA LOADERS ─────────────────────────────────────────
 @st.cache_data(ttl=43200)
 def load_transactions(access_key):
@@ -184,6 +213,39 @@ def get_centroid(coordinates):
     except:
         return None, None
 
+def load_amenities(token, themes, lat, lon, radius_m):
+    """Fetch amenities from OneMap themes API within a bounding box"""
+    # Build bounding box from centre + radius
+    dlat = radius_m / 111320
+    dlon = radius_m / (111320 * math.cos(math.radians(lat)))
+    lat1, lon1 = lat - dlat, lon - dlon
+    lat2, lon2 = lat + dlat, lon + dlon
+    extents = f"{lat1},{lon1},{lat2},{lon2}"
+
+    results = []
+    for theme in themes:
+        try:
+            url = f"https://www.onemap.gov.sg/api/public/themesvc/retrieveTheme"
+            params = {"queryName": theme, "token": token, "extents": extents}
+            r = requests.get(url, params=params, timeout=10).json()
+            for item in r.get("SrchResults", [])[1:]:  # skip first element (metadata)
+                try:
+                    lat_item = float(item.get("LatLng", "").split(",")[0])
+                    lon_item = float(item.get("LatLng", "").split(",")[1])
+                    results.append({
+                        "name":    item.get("NAME", ""),
+                        "address": item.get("ADDRESSSTREETNAME", ""),
+                        "postal":  item.get("ADDRESSPOSTALCODE", ""),
+                        "theme":   theme,
+                        "latitude":  lat_item,
+                        "longitude": lon_item,
+                    })
+                except:
+                    pass
+        except:
+            pass
+    return results
+
 # ── ACCESS KEY ───────────────────────────────────────────
 try:
     access_key = st.secrets["URA_ACCESS_KEY"]
@@ -219,6 +281,9 @@ tx_view      = st.sidebar.radio("Transaction view", ["Points", "Heatmap"], horiz
 show_gls     = st.sidebar.checkbox("GLS Sites", value=False)
 show_mp      = st.sidebar.checkbox("Master Plan 2025", value=False)
 
+show_amenities = st.sidebar.checkbox("Amenities", value=False)
+amenity_radius_m = st.sidebar.slider("Amenity radius (m)", 250, 2000, 1000, step=250) if show_amenities else 1000
+
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🔧 Filters")
 segments      = st.sidebar.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
@@ -253,6 +318,22 @@ else:
     filtered = filtered[filtered["latitude"].notna()]
 
 st.sidebar.markdown(f"**{len(filtered):,} transactions**")
+
+# ── ONEMAP TOKEN ─────────────────────────────────────────
+@st.cache_data(ttl=82800)  # refresh every 23 hours
+def get_onemap_token(email, password):
+    r = requests.post(
+        "https://www.onemap.gov.sg/api/auth/post/getToken",
+        json={"email": email, "password": password}
+    )
+    return r.json().get("access_token")
+
+try:
+    onemap_email    = st.secrets["ONEMAP_EMAIL"]
+    onemap_password = st.secrets["ONEMAP_PASSWORD"]
+    onemap_token    = get_onemap_token(onemap_email, onemap_password)
+except:
+    onemap_token = None
 
 # ── SUMMARY STATS ────────────────────────────────────────
 col1, col2, col3, col4 = st.columns(4)
@@ -395,6 +476,40 @@ if show_tx and len(filtered) > 0:
             opacity=0.8,
         ))
 
+# Amenities layer
+if show_amenities and center_lat and onemap_token:
+    st.sidebar.markdown("### Amenity Groups")
+    amenity_layers_data = []
+    
+    for group_name, group_config in AMENITY_GROUPS.items():
+        show_group = st.sidebar.checkbox(group_name, value=True, key=f"amenity_{group_name}")
+        if show_group:
+            items = load_amenities(
+                onemap_token,
+                group_config["themes"],
+                center_lat, center_lon,
+                amenity_radius_m
+            )
+            for item in items:
+                item["color"] = group_config["color"]
+                item["group"] = group_name
+                amenity_layers_data.append(item)
+
+    if amenity_layers_data:
+        layers.append(pdk.Layer(
+            "ScatterplotLayer",
+            data=amenity_layers_data,
+            get_position=["longitude", "latitude"],
+            get_fill_color="color",
+            get_radius=30,
+            pickable=True,
+            opacity=0.9,
+        ))
+elif show_amenities and not center_lat:
+    st.sidebar.warning("Search a location to load amenities.")
+elif show_amenities and not onemap_token:
+    st.sidebar.error("OneMap credentials not configured.")
+
 # Radius ring
 if center_lat:
     ring_coords = make_circle(center_lat, center_lon, radius_m)
@@ -427,9 +542,10 @@ view_state = pdk.ViewState(
 # ── TOOLTIP ──────────────────────────────────────────────
 tooltip = {
     "html": """
-        <div style='font-size:12px;padding:8px;'>
-        <b>{project}{location}{lu_desc}</b><br/>
-        {devt_code}
+        <div style='font-size:12px;padding:8px;max-width:250px;'>
+        <b>{project}{location}{lu_desc}{name}</b><br/>
+        {group}{devt_code}
+        <span style='color:#888'>{address}{street}</span><br/>
         PSF: S${psf} &nbsp;|&nbsp; Price: S${price_sgd}<br/>
         Area: {area_sqft} sqft &nbsp;|&nbsp; Floor: {floor_range}<br/>
         Tenure: {tenure}{lease_yr}<br/>
