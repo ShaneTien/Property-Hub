@@ -256,12 +256,43 @@ if show_mp:
             lu = f.get("properties", {}).get("LU_DESC", "")
             gpr = f.get("properties", {}).get("GPR", "")
             color = LAND_USE_COLORS.get(lu.upper(), DEFAULT_COLOR)
+            coords = f["geometry"]["coordinates"]
+            
+            # If location searched, only include polygons near the search point
+            if center_lat:
+                try:
+                    flat_coords = coords[0] if isinstance(coords[0][0], list) else coords
+                    lons = [c[0] for c in flat_coords]
+                    lats = [c[1] for c in flat_coords]
+                    c_lon = sum(lons) / len(lons)
+                    c_lat = sum(lats) / len(lats)
+                    dist = haversine(center_lat, center_lon, c_lat, c_lon)
+                    if dist > radius_m * 2:
+                        continue
+                except:
+                    continue
+
             mp_data.append({
-                "coordinates": f["geometry"]["coordinates"],
+                "coordinates": coords,
                 "lu_desc": lu,
                 "gpr": gpr,
                 "color": color,
             })
+        
+        if not center_lat:
+            st.warning("⚠️ Master Plan layer is large — search a location first to load it for that area only.")
+        else:
+            layers.append(pdk.Layer(
+                "PolygonLayer",
+                data=mp_data,
+                get_polygon="coordinates",
+                get_fill_color="color",
+                get_line_color=[150, 150, 150, 80],
+                get_line_width=1,
+                pickable=True,
+                stroked=True,
+                filled=True,
+            ))
         layers.append(pdk.Layer(
             "PolygonLayer",
             data=mp_data,
