@@ -362,6 +362,7 @@ def load_planning_area_boundaries():
 
 
 @st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400)
 def load_demographics():
     """Load Census 2020 population by planning area."""
     results = {}
@@ -409,38 +410,37 @@ def load_demographics():
         print(f"Dwelling data error: {e}")
 
     return results
-
+    
 def build_planning_area_data(boundaries_geojson, demographics):
     """Merge planning area boundaries with demographic stats."""
+    import math
     if not boundaries_geojson:
         return []
 
     planning_areas = []
     for f in boundaries_geojson.get("features", []):
-        props = f.get("properties", {})
-        pa_name = props.get("PLN_AREA_N", props.get("PLANAREA", "")).upper().strip()
+        props   = f.get("properties", {})
+        pa_name = props.get("PLN_AREA_N", props.get("PLANAREA", props.get("NAME", ""))).upper().strip()
         coords  = f["geometry"]["coordinates"]
         demo    = demographics.get(pa_name, {})
 
         total   = demo.get("total_pop", 0)
         young   = demo.get("young", 0)
         elderly = demo.get("elderly", 0)
-        dwell   = demo.get("dwelling", {})
+        hdb     = demo.get("hdb", 0)
+        condo   = demo.get("condo", 0)
+        landed  = demo.get("landed", 0)
+        dwell_total = demo.get("dwell_total", 1) or 1
+        private = condo + landed
 
-        hdb_keys     = [k for k in dwell if "HDB" in k.upper() or "PUBLIC" in k.upper()]
-        private_keys = [k for k in dwell if "PRIVATE" in k.upper() or "CONDOMINIUM" in k.upper() or "LANDED" in k.upper()]
-        hdb_pop      = sum(dwell[k] for k in hdb_keys)
-        private_pop  = sum(dwell[k] for k in private_keys)
-        dwell_total  = sum(dwell.values()) or 1
-
-        # Estimate area in km² from polygon (rough)
+        # Estimate area in km²
         try:
-            flat  = coords[0] if isinstance(coords[0][0], list) else coords
-            lons  = [c[0] for c in flat]
-            lats  = [c[1] for c in flat]
-            width = (max(lons) - min(lons)) * 111 * abs(math.cos(math.radians(sum(lats)/len(lats))))
-            height= (max(lats) - min(lats)) * 111
-            area_km2 = width * height * 0.7  # rough polygon fill factor
+            flat   = coords[0] if isinstance(coords[0][0], list) else coords
+            lons   = [c[0] for c in flat]
+            lats   = [c[1] for c in flat]
+            width  = (max(lons) - min(lons)) * 111 * abs(math.cos(math.radians(sum(lats)/len(lats))))
+            height = (max(lats) - min(lats)) * 111
+            area_km2 = max(width * height * 0.7, 0.1)
         except:
             area_km2 = 1
 
@@ -448,11 +448,11 @@ def build_planning_area_data(boundaries_geojson, demographics):
             "coordinates":  coords,
             "planning_area": pa_name,
             "total_pop":    total,
-            "pct_young":    (young / total * 100) if total else 0,
-            "pct_elderly":  (elderly / total * 100) if total else 0,
-            "pct_hdb":      (hdb_pop / dwell_total * 100),
-            "pct_private":  (private_pop / dwell_total * 100),
-            "pop_density":  (total / area_km2) if area_km2 else 0,
+            "pct_young":    round((young / total * 100), 1) if total else 0,
+            "pct_elderly":  round((elderly / total * 100), 1) if total else 0,
+            "pct_hdb":      round((hdb / dwell_total * 100), 1),
+            "pct_private":  round((private / dwell_total * 100), 1),
+            "pop_density":  round(total / area_km2) if area_km2 else 0,
         })
 
-    return planning_areas
+    return [p for p in planning_areas if p["total_pop"] > 0]
