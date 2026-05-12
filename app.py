@@ -22,6 +22,11 @@ from layers import (
 from charts import render_charts
 
 st.set_page_config(page_title="Property Hub", page_icon="🏙️", layout="wide")
+st.markdown("""
+    <style>
+        .block-container { padding-top: 1rem; }
+    </style>
+""", unsafe_allow_html=True)
 st.title("🏙️ Property Hub")
 
 # ── ACCESS KEYS ──────────────────────────────────────────
@@ -331,7 +336,7 @@ st.pydeck_chart(pdk.Deck(
     initial_view_state=view_state,
     tooltip=active_tooltip,
     map_style=ONEMAP_BASEMAP,
-))
+), height=650)
 
 if show_tx and tx_view == "Points" and len(filtered) > 0:
     st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
