@@ -1,8 +1,5 @@
 name: Update URA Transactions
 
-
-name: Update URA Transactions
-
 on:
   schedule:
     - cron: '0 18 * * 2,5'
