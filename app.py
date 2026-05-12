@@ -2,7 +2,7 @@ import streamlit as st
 import pydeck as pdk
 import pandas as pd
 
-from config import ONEMAP_BASEMAP, AMENITY_CATEGORY_COLORS, MRT_COLOR, LAND_USE_COLORS, DATA_SOURCES
+from config import ONEMAP_BASEMAP, AMENITY_CATEGORY_COLORS, LAND_USE_COLORS, DATA_SOURCES
 from utils import haversine, bbox
 from data_loaders import (
     load_transactions, load_gls, load_masterplan,
@@ -61,8 +61,8 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("## 🗂️ Layers")
 
 # ── TRANSACTIONS ─────────────────────────────────────────
-show_tx  = st.sidebar.checkbox("Transactions", value=False)
-tx_view  = "Points"
+show_tx    = st.sidebar.checkbox("Transactions", value=False)
+tx_view    = "Points"
 segments, prop_types, sale_types = [], [], []
 date_range = None
 psf_range  = None
@@ -90,14 +90,20 @@ show_amenities   = st.sidebar.checkbox("Amenities", value=False)
 amenity_radius_m = 1000
 selected_themes  = {}
 show_mrt         = False
+show_malls       = False
+show_supermarkets = False
 
 if show_amenities:
-    with st.sidebar.expander("Amenity Settings"):
+    with st.sidebar.expander("⚙️ Amenity Settings"):
         amenity_radius_m = st.slider("Amenity radius (m)", 250, 2000, 1000, step=250)
 
     if center_lat and onemap_token:
         with st.sidebar.expander("🚇 Transport (MRT/LRT)"):
             show_mrt = st.checkbox("MRT / LRT Stations", value=True, key="am_mrt")
+
+        with st.sidebar.expander("🛍️ Shopping"):
+            show_malls        = st.checkbox("Shopping Malls", value=False, key="am_malls")
+            show_supermarkets = st.checkbox("Supermarkets",   value=False, key="am_supermarkets")
 
         with st.spinner("Loading theme list..."):
             grouped_themes = load_onemap_themes(onemap_token)
@@ -105,19 +111,18 @@ if show_amenities:
         for category, themes in sorted(grouped_themes.items()):
             color = AMENITY_CATEGORY_COLORS.get(category, [180, 180, 180, 240])
             with st.sidebar.expander(f"{category} ({len(themes)})"):
+                select_all = st.checkbox(
+                    "Select all", value=False,
+                    key=f"am_all_{category}"
+                )
                 for theme in sorted(themes, key=lambda x: x["name"]):
                     checked = st.checkbox(
                         theme["name"],
-                        value=False,
+                        value=select_all,
                         key=f"am_{theme['queryName']}"
                     )
                     if checked:
                         selected_themes[theme["queryName"]] = color
-
-        # Shopping malls via keyword search
-        with st.sidebar.expander("🛍️ Shopping (Keyword Search)"):
-            show_malls = st.checkbox("Shopping Malls", value=False, key="am_malls")
-            show_supermarkets = st.checkbox("Supermarkets", value=False, key="am_supermarkets")
 
     elif center_lat and not onemap_token:
         st.sidebar.warning("OneMap credentials missing.")
@@ -171,7 +176,7 @@ all_amenity_data = []
 
 if show_amenities and center_lat and onemap_token:
 
-    # MRT
+    # MRT stations
     if show_mrt:
         with st.spinner("Loading MRT stations..."):
             mrt_stations = load_mrt_stations()
@@ -180,10 +185,10 @@ if show_amenities and center_lat and onemap_token:
             s for s in mrt_stations
             if lat1 <= s["latitude"] <= lat2 and lon1 <= s["longitude"] <= lon2
         ]
-        # Add distance and category
         for s in nearby_mrt:
-            s["category"] = "🚇 Transport"
-            s["distance"] = haversine(center_lat, center_lon, s["latitude"], s["longitude"])
+            s["category"]     = "🚇 Transport (MRT/LRT)"
+            s["distance"]     = haversine(center_lat, center_lon, s["latitude"], s["longitude"])
+            s["walking_mins"] = round(s["distance"] / 80, 0)
         layers += build_mrt_layer(nearby_mrt)
         all_amenity_data.extend(nearby_mrt)
 
@@ -195,29 +200,33 @@ if show_amenities and center_lat and onemap_token:
             center_lat, center_lon, amenity_radius_m
         )
         for item in items:
-            item["color"]    = selected_themes.get(item["theme"], [180, 180, 180, 240])
-            item["category"] = next(
-                (cat for cat, col in AMENITY_CATEGORY_COLORS.items()
-                 if col == selected_themes.get(item["theme"])), item["theme"]
-            )
-            item["distance"] = haversine(center_lat, center_lon, item["latitude"], item["longitude"])
+            item["color"]        = selected_themes.get(item["theme"], [180, 180, 180, 240])
+            item["category"]     = item["theme"]
+            item["line_label"]   = ""
+            item["distance"]     = haversine(center_lat, center_lon, item["latitude"], item["longitude"])
+            item["walking_mins"] = round(item["distance"] / 80, 0)
         all_amenity_data.extend(items)
         layers += build_amenity_layer(items)
 
-    # Shopping malls keyword search
+    # Shopping malls
     if show_malls:
         malls = search_onemap_keyword("shopping mall", center_lat, center_lon, amenity_radius_m)
         for m in malls:
-            m["color"]    = [255, 100, 0, 240]
-            m["category"] = "🛍️ Shopping Malls"
+            m["color"]        = [255, 100, 0, 240]
+            m["category"]     = "🛍️ Shopping Malls"
+            m["line_label"]   = ""
+            m["walking_mins"] = round(m["distance"] / 80, 0)
         all_amenity_data.extend(malls)
         layers += build_amenity_layer(malls)
 
+    # Supermarkets
     if show_supermarkets:
         supermarkets = search_onemap_keyword("supermarket", center_lat, center_lon, amenity_radius_m)
         for s in supermarkets:
-            s["color"]    = [255, 150, 0, 240]
-            s["category"] = "🛍️ Supermarkets"
+            s["color"]        = [255, 150, 0, 240]
+            s["category"]     = "🛒 Supermarkets"
+            s["line_label"]   = ""
+            s["walking_mins"] = round(s["distance"] / 80, 0)
         all_amenity_data.extend(supermarkets)
         layers += build_amenity_layer(supermarkets)
 
@@ -250,7 +259,7 @@ else:
         "html": """
             <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.8;font-family:sans-serif'>
             <b>{name}{project}{location}{lu_desc}</b><br/>
-            <span style='color:#666;font-size:11px'>{rail_type}{theme}{devt_code}{street}</span><br/>
+            <span style='color:#666;font-size:11px'>{line_label}{theme}{devt_code}{street}</span><br/>
             <span style='color:#666;font-size:11px'>{market_segment}{district}</span>
             </div>
         """,
@@ -285,15 +294,24 @@ if show_amenities and all_amenity_data:
     st.markdown("---")
     st.markdown("### 📍 Nearby Amenities")
 
-    amenity_df = pd.DataFrame(all_amenity_data)[["name", "category", "distance"]]
-    amenity_df["distance"] = amenity_df["distance"].round(0).astype(int)
-    amenity_df = amenity_df.sort_values(["category", "distance"]).reset_index(drop=True)
-    amenity_df.columns = ["Name", "Category", "Distance (m)"]
+    rows = []
+    for a in all_amenity_data:
+        dist = a.get("distance", 0)
+        rows.append({
+            "Name":         a.get("name", ""),
+            "Line / Type":  a.get("line_label", a.get("theme", "")),
+            "Category":     a.get("category", a.get("theme", "")),
+            "Distance (m)": int(round(dist, 0)),
+            "Walk (mins)":  int(round(dist / 80, 0)),
+        })
+
+    amenity_df = pd.DataFrame(rows).sort_values(["Category", "Distance (m)"]).reset_index(drop=True)
 
     for category, group in amenity_df.groupby("Category"):
         with st.expander(f"{category} ({len(group)})"):
             st.dataframe(
-                group[["Name", "Distance (m)"]].reset_index(drop=True),
+                group[["Name", "Line / Type", "Distance (m)", "Walk (mins)"]]
+                .reset_index(drop=True),
                 use_container_width=True,
                 hide_index=True
             )
