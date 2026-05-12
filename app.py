@@ -96,7 +96,6 @@ show_tx   = st.sidebar.checkbox("Transactions", value=False)
 tx_view   = "Points"
 segments, prop_types, sale_types = [], [], []
 date_range = None
-psf_range  = None
 
 if show_tx:
     with st.sidebar.expander("Transaction Filters"):
@@ -107,8 +106,7 @@ if show_tx:
         min_date   = df_tx["date"].min().to_pydatetime()
         max_date   = df_tx["date"].max().to_pydatetime()
         date_range = st.slider("Contract Date", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="MMM YYYY")
-        psf_min, psf_max = int(df_tx["psf"].min()), int(df_tx["psf"].max())
-        psf_range  = st.slider("PSF (S$)", psf_min, psf_max, (psf_min, psf_max))
+
 
 # ── GLS ──────────────────────────────────────────────────
 show_gls = st.sidebar.checkbox("GLS Sites", value=False)
@@ -170,8 +168,6 @@ if show_amenities:
 filtered = df_tx.copy()
 if show_tx and date_range:
     filtered = filtered[(filtered["date"] >= date_range[0]) & (filtered["date"] <= date_range[1])]
-if show_tx and psf_range:
-    filtered = filtered[(filtered["psf"] >= psf_range[0]) & (filtered["psf"] <= psf_range[1])]
 if segments:
     filtered = filtered[filtered["market_segment"].isin(segments)]
 if prop_types:
