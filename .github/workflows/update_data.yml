@@ -1,10 +1,15 @@
 name: Update URA Transactions
 
 
+name: Update URA Transactions
+
 on:
   schedule:
-    - cron: '0 18 * * 2,5'  # 2am SGT every Tuesday and Friday
-  workflow_dispatch:          # allows manual trigger from GitHub Actions tab
+    - cron: '0 18 * * 2,5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   update-data:
