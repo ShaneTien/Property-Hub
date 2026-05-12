@@ -1,0 +1,35 @@
+name: Update URA Transactions
+
+on:
+  schedule:
+    - cron: '0 18 * * 2,5'  # 2am SGT every Tuesday and Friday
+  workflow_dispatch:          # allows manual trigger from GitHub Actions tab
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests pandas pyproj openpyxl
+
+      - name: Run URA pull script
+        run: python scripts/ura_pull_to_csv.py
+        env:
+          URA_ACCESS_KEY: ${{ secrets.URA_ACCESS_KEY }}
+
+      - name: Commit and push data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ura_transactions.csv
+          git diff --staged --quiet || git commit -m "Auto-update URA transactions $(date +'%Y-%m-%d')"
+          git push
