@@ -123,7 +123,12 @@ def load_mrt_stations():
                     # Look up line codes — try exact match then partial
                     name_upper = name.upper()
                     # Strip " MRT STATION" or " LRT STATION" suffix
-                    clean = name_upper.replace(" MRT STATION", "").replace(" LRT STATION", "").strip()
+                    clean = (name_upper
+                        .replace(" MRT STATION", "")
+                        .replace(" LRT STATION", "")
+                        .replace(" INTERCHANGE", "")
+                        .replace(" STATION", "")
+                        .strip())
                     lines = MRT_STATION_LINES.get(clean, [])
 
                     # Derive colour from first line
