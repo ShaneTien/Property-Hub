@@ -228,7 +228,7 @@ TOOLTIP_MASTERPLAN = {
     "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
 }
 
-TTOOLTIP_MRT = {
+TOOLTIP_MRT = {
     "html": """
         <div style='font-size:12px;padding:8px;max-width:220px;line-height:1.8;font-family:sans-serif'>
         🚇 <b>{name}</b><br/>
