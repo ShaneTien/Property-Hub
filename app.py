@@ -12,7 +12,9 @@ from data_loaders import (
 from layers import (
     build_transaction_layer, build_gls_layer,
     build_masterplan_layer, build_amenity_layer,
-    build_radius_ring, TOOLTIP
+    build_mrt_layer, build_radius_ring,
+    TOOLTIP_TRANSACTIONS, TOOLTIP_GLS, TOOLTIP_MASTERPLAN,
+    TOOLTIP_MRT, TOOLTIP_AMENITY
 )
 from charts import render_charts
 
@@ -182,15 +184,34 @@ view_state = pdk.ViewState(
     pitch=0,
 )
 
+# Build tooltip based on active layers
+if show_tx and not show_gls and not show_mp and not show_amenities:
+    active_tooltip = TOOLTIP_TRANSACTIONS
+elif show_gls and not show_tx and not show_mp and not show_amenities:
+    active_tooltip = TOOLTIP_GLS
+elif show_mp and not show_tx and not show_gls and not show_amenities:
+    active_tooltip = TOOLTIP_MASTERPLAN
+elif show_amenities and not show_tx and not show_gls and not show_mp:
+    active_tooltip = TOOLTIP_AMENITY
+else:
+    # Multiple layers — use a combined tooltip that handles all field types
+    active_tooltip = {
+        "html": """
+            <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.8;font-family:sans-serif'>
+            <b>{name}{project}{location}{lu_desc}</b><br/>
+            <span style='color:#666;font-size:11px'>{rail_type}{theme}{devt_code}{street}</span><br/>
+            <span style='color:#666;font-size:11px'>{market_segment}{district}</span>
+            </div>
+        """,
+        "style": {"backgroundColor": "white", "color": "black"}
+    }
+
 st.pydeck_chart(pdk.Deck(
     layers=layers,
     initial_view_state=view_state,
-    tooltip=TOOLTIP,
+    tooltip=active_tooltip,
     map_style=ONEMAP_BASEMAP,
 ))
-
-if show_tx and tx_view == "Points" and len(filtered) > 0:
-    st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
 
 # ── MASTER PLAN LEGEND ───────────────────────────────────
 if show_mp and center_lat:
