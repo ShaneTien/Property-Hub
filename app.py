@@ -8,7 +8,7 @@ from data_loaders import (
     load_transactions, load_gls, load_masterplan,
     load_mrt_stations, get_onemap_token,
     geocode_address, load_amenities_onemap,
-    load_onemap_themes, search_onemap_keyword
+    load_onemap_themes, search_onemap_keyword, load_schools
 )
 from layers import (
     build_transaction_layer, build_gls_layer,
@@ -120,15 +120,17 @@ selected_themes   = {}
 show_mrt          = False
 show_malls        = False
 show_supermarkets = False
+show_schools      = False
 
 if show_amenities:
     if center_lat and onemap_token:
         with st.sidebar.expander("🚇 Transport (MRT/LRT)"):
             show_mrt = st.checkbox("MRT / LRT Stations", value=True, key="am_mrt")
 
-        with st.sidebar.expander("🛍️ Shopping"):
-            show_malls        = st.checkbox("Shopping Malls", value=False, key="am_malls")
-            show_supermarkets = st.checkbox("Supermarkets",   value=False, key="am_supermarkets")
+        with st.sidebar.expander("🛍️ Shopping & 🏫 Schools"):
+            show_malls        = st.checkbox("Shopping Malls",  value=False, key="am_malls")
+            show_supermarkets = st.checkbox("Supermarkets",    value=False, key="am_supermarkets")
+            show_schools      = st.checkbox("Schools (MOE)",   value=False, key="am_schools")
 
         with st.spinner("Loading theme list..."):
             grouped_themes = load_onemap_themes(onemap_token)
@@ -234,7 +236,8 @@ if show_amenities and center_lat and onemap_token:
 
     # Shopping malls
     if show_malls:
-        malls = search_onemap_keyword("shopping mall", center_lat, center_lon, amenity_radius_m)
+        with st.spinner("Loading malls..."):
+            malls = search_onemap_keyword("mall", center_lat, center_lon, amenity_radius_m)
         for m in malls:
             m["color"]        = [255, 100, 0, 240]
             m["category"]     = "🛍️ Shopping Malls"
@@ -245,7 +248,13 @@ if show_amenities and center_lat and onemap_token:
 
     # Supermarkets
     if show_supermarkets:
-        supermarkets = search_onemap_keyword("supermarket", center_lat, center_lon, amenity_radius_m)
+        with st.spinner("Loading supermarkets..."):
+            supermarkets = (
+                search_onemap_keyword("fairprice",         center_lat, center_lon, amenity_radius_m) +
+                search_onemap_keyword("cold storage",      center_lat, center_lon, amenity_radius_m) +
+                search_onemap_keyword("giant supermarket", center_lat, center_lon, amenity_radius_m) +
+                search_onemap_keyword("sheng siong",       center_lat, center_lon, amenity_radius_m)
+            )
         for s in supermarkets:
             s["color"]        = [255, 150, 0, 240]
             s["category"]     = "🛒 Supermarkets"
@@ -253,6 +262,23 @@ if show_amenities and center_lat and onemap_token:
             s["walking_mins"] = round(s["distance"] / 80, 0)
         all_amenity_data.extend(supermarkets)
         layers += build_amenity_layer(supermarkets)
+
+    # Schools
+    if show_schools:
+        with st.spinner("Loading schools..."):
+            all_schools = load_schools()
+        nearby_schools = [
+            s for s in all_schools
+            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= amenity_radius_m
+        ]
+        for s in nearby_schools:
+            s["color"]        = [0, 153, 0, 240]
+            s["category"]     = "🏫 Schools"
+            s["line_label"]   = s.get("theme", "")
+            s["distance"]     = haversine(center_lat, center_lon, s["latitude"], s["longitude"])
+            s["walking_mins"] = round(s["distance"] / 80, 0)
+        all_amenity_data.extend(nearby_schools)
+        layers += build_amenity_layer(nearby_schools)
 
     if all_amenity_data:
         st.sidebar.markdown(f"**{len(all_amenity_data):,} amenities found**")
