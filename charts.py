@@ -75,11 +75,13 @@ def chart_by_property_type(filtered):
 
 def render_charts(filtered):
     # Summary stats
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Transactions", f"{len(filtered):,}")
-    col2.metric("Median PSF",   f"S${filtered['psf'].median():,.0f}")
-    col3.metric("Median Price", f"S${filtered['price_sgd'].median()/1e6:.2f}M")
-    col4.metric("Avg Area",     f"{filtered['area_sqft'].mean():,.0f} sqft")
+    psf = filtered["psf"].dropna()
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Transactions",  f"{len(filtered):,}")
+    col2.metric("Mean PSF",      f"S${psf.mean():,.0f}")
+    col3.metric("Median PSF",    f"S${psf.median():,.0f}")
+    col4.metric("25th Pctile",   f"S${psf.quantile(0.25):,.0f}")
+    col5.metric("75th Pctile",   f"S${psf.quantile(0.75):,.0f}")
     st.markdown("---")
 
     # Charts
