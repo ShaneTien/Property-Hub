@@ -175,3 +175,28 @@ def load_amenities_onemap(token, themes, lat, lon, radius_m):
         except:
             pass
     return results
+    
+@st.cache_data(ttl=86400)
+def load_onemap_themes(token):
+    """Fetch all available OneMap themes grouped by category."""
+    headers = {"Authorization": token}
+    try:
+        r = requests.get(
+            "https://www.onemap.gov.sg/api/public/themesvc/getAllThemesInfo",
+            params={"moreInfo": "Y"},
+            headers=headers,
+            timeout=10
+        ).json()
+        themes = r.get("Theme_Names", [])
+        grouped = {}
+        for t in themes:
+            cat = t.get("CATEGORY") or "Other"
+            if cat not in grouped:
+                grouped[cat] = []
+            grouped[cat].append({
+                "name":      t.get("THEMENAME", ""),
+                "queryName": t.get("QUERYNAME", ""),
+            })
+        return grouped
+    except:
+        return {}
