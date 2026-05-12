@@ -124,24 +124,70 @@ def build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m):
 def build_mrt_layer(stations):
     if not stations:
         return []
-    data = [{
-        "name":        s.get("name", ""),
-        "rail_type":   s.get("rail_type", "MRT"),
-        "line_label":  s.get("line_label", ""),
-        "latitude":    s.get("latitude"),
-        "longitude":   s.get("longitude"),
-        "color":       s.get("color", [80, 80, 80, 240]),
-    } for s in stations]
+
+    from config import MRT_LINE_COLORS, MRT_DEFAULT_COLOR
+    import math
+
+    OFFSET_M = 35  # metres between dots for interchange stations
+
+    data = []
+    for s in stations:
+        lines     = s.get("lines", [])
+        lat       = s.get("latitude")
+        lon       = s.get("longitude")
+        name      = s.get("name", "")
+        rail_type = s.get("rail_type", "MRT")
+        line_label = s.get("line_label", "")
+
+        if not lines:
+            # No line info — single grey dot
+            data.append({
+                "name":       name,
+                "rail_type":  rail_type,
+                "line_label": line_label,
+                "line":       "",
+                "latitude":   lat,
+                "longitude":  lon,
+                "color":      MRT_DEFAULT_COLOR,
+            })
+            continue
+
+        n = len(lines)
+        for i, line in enumerate(lines):
+            color = MRT_LINE_COLORS.get(line, MRT_DEFAULT_COLOR)
+
+            if n == 1:
+                # Single line — no offset
+                offset_lat = lat
+                offset_lon = lon
+            else:
+                # Spread dots in a row horizontally
+                # Centre offset so dots are symmetric around station point
+                angle = math.pi / 2  # spread east-west
+                step  = OFFSET_M / 111320
+                offset = (i - (n - 1) / 2) * step
+                offset_lat = lat
+                offset_lon = lon + offset / math.cos(math.radians(lat))
+
+            data.append({
+                "name":       name,
+                "rail_type":  rail_type,
+                "line_label": line_label,
+                "line":       line,
+                "latitude":   offset_lat,
+                "longitude":  offset_lon,
+                "color":      color,
+            })
+
     return [pdk.Layer(
         "ScatterplotLayer",
         data=data,
         get_position=["longitude", "latitude"],
         get_fill_color="color",
-        get_radius=60,
+        get_radius=25,
         pickable=True,
         opacity=1.0,
     )]
-
 
 # ── AMENITY LAYER ────────────────────────────────────────
 def build_amenity_layer(amenity_data):
