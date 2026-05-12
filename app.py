@@ -178,7 +178,8 @@ if prop_types:
     filtered = filtered[filtered["property_type"].isin(prop_types)]
 if sale_types:
     sale_map = {"1 - New Sale": "1", "2 - Sub Sale": "2", "3 - Resale": "3"}
-    filtered = filtered[filtered["type_of_sale"].isin([sale_map[s] for s in sale_types])]
+    sale_codes = [sale_map[s] for s in sale_types]
+    filtered = filtered[filtered["type_of_sale"].astype(str).isin(sale_codes)]
 filtered = filtered[filtered["latitude"].notna()]
 if center_lat and show_tx:
     filtered["distance_m"] = filtered.apply(
