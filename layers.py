@@ -1,8 +1,9 @@
 import pydeck as pdk
 from utils import psf_to_color, get_centroid, parse_date, make_circle, haversine
-from config import LAND_USE_COLORS, DEFAULT_MP_COLOR, ONEMAP_BASEMAP
+from config import LAND_USE_COLORS, DEFAULT_MP_COLOR
 
 
+# ── TRANSACTION LAYER ────────────────────────────────────
 def build_transaction_layer(filtered, tx_view):
     if len(filtered) == 0:
         return []
@@ -32,6 +33,7 @@ def build_transaction_layer(filtered, tx_view):
         )]
 
 
+# ── GLS LAYER ────────────────────────────────────────────
 def build_gls_layer(gls_geojson):
     if not gls_geojson:
         return []
@@ -46,10 +48,11 @@ def build_gls_layer(gls_geojson):
             "location":    props.get("LOCATION", ""),
             "devt_code":   props.get("DEVT_CODE", ""),
             "lease_yr":    str(props.get("LEASE_YR", "")),
-            "gpr":         props.get("GPR", ""),
-            "housing_un":  props.get("HOUSING_UN", ""),
-            "no_of_bids":  props.get("NO_OF_BIDS", ""),
+            "gpr":         str(props.get("GPR", "")),
+            "housing_un":  str(props.get("HOUSING_UN", "")),
+            "no_of_bids":  str(props.get("NO_OF_BIDS", "")),
             "date_award":  parse_date(props.get("DATE_AWARD")),
+            "sa_sqm":      str(props.get("SA_SQM", "")),
         }
         gls_polygons.append(item)
         if lat_c and lon_c:
@@ -78,6 +81,7 @@ def build_gls_layer(gls_geojson):
     ]
 
 
+# ── MASTER PLAN LAYER ────────────────────────────────────
 def build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m):
     if not mp_geojson:
         return []
@@ -99,7 +103,7 @@ def build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m):
         mp_data.append({
             "coordinates": coords,
             "lu_desc":     lu,
-            "gpr":         gpr,
+            "gpr":         str(gpr),
             "color":       color,
         })
 
@@ -116,13 +120,41 @@ def build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m):
     )]
 
 
+# ── MRT LAYER ────────────────────────────────────────────
+def build_mrt_layer(stations):
+    if not stations:
+        return []
+    data = [{
+        "name":      s.get("name", ""),
+        "rail_type": s.get("rail_type", "MRT"),
+        "latitude":  s.get("latitude"),
+        "longitude": s.get("longitude"),
+    } for s in stations]
+    return [pdk.Layer(
+        "ScatterplotLayer",
+        data=data,
+        get_position=["longitude", "latitude"],
+        get_fill_color=[0, 102, 204, 240],
+        get_radius=60,
+        pickable=True,
+        opacity=1.0,
+    )]
+
+
+# ── AMENITY LAYER ────────────────────────────────────────
 def build_amenity_layer(amenity_data):
     if not amenity_data:
         return []
-
+    data = [{
+        "name":      a.get("name", ""),
+        "theme":     a.get("theme", ""),
+        "latitude":  a.get("latitude"),
+        "longitude": a.get("longitude"),
+        "color":     a.get("color", [180, 180, 180, 240]),
+    } for a in amenity_data]
     return [pdk.Layer(
         "ScatterplotLayer",
-        data=amenity_data,
+        data=data,
         get_position=["longitude", "latitude"],
         get_fill_color="color",
         get_radius=35,
@@ -131,6 +163,7 @@ def build_amenity_layer(amenity_data):
     )]
 
 
+# ── RADIUS RING ──────────────────────────────────────────
 def build_radius_ring(center_lat, center_lon, radius_m):
     ring_coords = make_circle(center_lat, center_lon, radius_m)
     return [
@@ -154,16 +187,61 @@ def build_radius_ring(center_lat, center_lon, radius_m):
     ]
 
 
-TOOLTIP = {
+# ── TOOLTIPS ─────────────────────────────────────────────
+TOOLTIP_TRANSACTIONS = {
     "html": """
-        <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.6'>
-        <b>{name}{project}{location}{lu_desc}</b><br/>
-        <span style='color:#555'>{group}{devt_code}</span><br/>
-        PSF: S${psf} &nbsp;|&nbsp; Price: S${price_sgd}<br/>
-        Area: {area_sqft} sqft &nbsp;|&nbsp; Floor: {floor_range}<br/>
-        Tenure: {tenure}{lease_yr} &nbsp;|&nbsp; GPR: {gpr}<br/>
+        <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.8;font-family:sans-serif'>
+        <b>{project}</b><br/>
+        <span style='color:#666;font-size:11px'>{street} · D{district} · {market_segment}</span><br/>
+        <b>S${psf} psf</b> &nbsp;|&nbsp; S${price_sgd}<br/>
+        {area_sqft} sqft &nbsp;|&nbsp; Floor {floor_range}<br/>
+        {tenure}<br/>
+        <span style='color:#666;font-size:11px'>{property_type}</span>
+        </div>
+    """,
+    "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
+}
+
+TOOLTIP_GLS = {
+    "html": """
+        <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.8;font-family:sans-serif'>
+        <b>{location}</b><br/>
+        <span style='color:#666;font-size:11px'>{devt_code}</span><br/>
+        Tenure: {lease_yr} yrs &nbsp;|&nbsp; GPR: {gpr}<br/>
+        Site area: {sa_sqm} sqm<br/>
+        Units: {housing_un} &nbsp;|&nbsp; Bids: {no_of_bids}<br/>
         Awarded: {date_award}
         </div>
     """,
-    "style": {"backgroundColor": "white", "color": "black"}
+    "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
+}
+
+TOOLTIP_MASTERPLAN = {
+    "html": """
+        <div style='font-size:12px;padding:8px;max-width:200px;line-height:1.8;font-family:sans-serif'>
+        <b>{lu_desc}</b><br/>
+        GPR: {gpr}
+        </div>
+    """,
+    "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
+}
+
+TOOLTIP_MRT = {
+    "html": """
+        <div style='font-size:12px;padding:8px;max-width:200px;line-height:1.8;font-family:sans-serif'>
+        🚇 <b>{name}</b><br/>
+        <span style='color:#666;font-size:11px'>{rail_type}</span>
+        </div>
+    """,
+    "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
+}
+
+TOOLTIP_AMENITY = {
+    "html": """
+        <div style='font-size:12px;padding:8px;max-width:200px;line-height:1.8;font-family:sans-serif'>
+        <b>{name}</b><br/>
+        <span style='color:#666;font-size:11px'>{theme}</span>
+        </div>
+    """,
+    "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
 }
