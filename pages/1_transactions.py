@@ -139,14 +139,6 @@ psf_range = st.sidebar.slider("PSF Range (S$)", psf_min, psf_max, (psf_min, psf_
 # ── APPLY FILTERS ────────────────────────────────────────
 filtered = df.copy()
 
-# Only show map if at least one filter is applied
-filters_applied = any([segments, selected_types, selected_districts, tenures, sale_types,
-                        date_range != (min_date.to_pydatetime(), max_date.to_pydatetime())])
-
-if not filters_applied:
-    st.info("👈 Apply at least one filter from the sidebar to display transactions on the map.")
-    st.stop()
-
 filtered = filtered[(filtered["date"] >= date_range[0]) & (filtered["date"] <= date_range[1])]
 if segments:
     filtered = filtered[filtered["market_segment"].isin(segments)]
