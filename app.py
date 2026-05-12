@@ -177,10 +177,10 @@ all_amenity_data = []
 if show_amenities and center_lat and onemap_token:
 
     # MRT stations
-    if show_mrt:
+if show_mrt:
         with st.spinner("Loading MRT stations..."):
             mrt_stations = load_mrt_stations()
-nearby_mrt = [
+        nearby_mrt = [
             s for s in mrt_stations
             if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= amenity_radius_m
         ]
