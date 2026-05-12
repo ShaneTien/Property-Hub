@@ -60,6 +60,34 @@ def load_transactions(access_key):
     df["month"] = df["contract_date"].str[:2]
     df["year"]  = "20" + df["contract_date"].str[2:]
     df["date"]  = pd.to_datetime(df["year"] + "-" + df["month"], format="%Y-%m", errors="coerce")
+
+    # Geocode projects missing coordinates using OneMap
+    missing = df[df["latitude"].isna()]["project"].dropna().unique()
+    if len(missing) > 0:
+        geocoded = {}
+        for project in missing:
+            try:
+                url = (
+                    f"https://www.onemap.gov.sg/api/common/elastic/search"
+                    f"?searchVal={requests.utils.quote(project)}&returnGeom=Y&getAddrDetails=Y&pageNum=1"
+                )
+                r = requests.get(url, timeout=5).json()
+                if r.get("found", 0) > 0:
+                    result = r["results"][0]
+                    geocoded[project] = (
+                        round(float(result["LATITUDE"]), 6),
+                        round(float(result["LONGITUDE"]), 6)
+                    )
+            except:
+                pass
+            time.sleep(0.05)
+
+        # Apply geocoded coordinates
+        for project, (lat, lon) in geocoded.items():
+            mask = (df["project"] == project) & (df["latitude"].isna())
+            df.loc[mask, "latitude"]  = lat
+            df.loc[mask, "longitude"] = lon
+
     return df
 
 
