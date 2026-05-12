@@ -14,28 +14,48 @@ TRANSFORMER = Transformer.from_crs("EPSG:3414", "EPSG:4326", always_xy=True)
 ONEMAP_BASEMAP = "https://www.onemap.gov.sg/maps/json/raster/mbstyle/Default.json"
 
 LAND_USE_COLORS = {
-    "RESIDENTIAL":              [255, 200, 100, 160],
-    "COMMERCIAL":               [255, 100, 100, 160],
-    "COMMERCIAL & RESIDENTIAL": [255, 150, 80,  160],
-    "BUSINESS 1":               [150, 150, 255, 160],
-    "BUSINESS 2":               [100, 100, 220, 160],
-    "BUSINESS PARK":            [180, 100, 255, 160],
-    "WHITE":                    [255, 255, 255, 160],
-    "HOTEL":                    [255, 180, 220, 160],
-    "CIVIC & COMMUNITY":        [100, 220, 180, 160],
-    "OPEN SPACE":               [100, 200, 100, 160],
-    "PARK":                     [80,  180,  80, 160],
-    "TRANSPORT":                [180, 180, 180, 160],
-    "UTILITY":                  [200, 200, 100, 160],
-    "EDUCATIONAL INSTITUTION":  [100, 180, 255, 160],
-    "HEALTH & MEDICAL CARE":    [255, 100, 180, 160],
-    "PLACE OF WORSHIP":         [220, 180, 100, 160],
-    "RESERVE SITE":             [200, 200, 200, 160],
-    "ROAD":                     [220, 220, 220, 160],
-    "BEACH AREA":               [200, 240, 255, 160],
-    "WATERBODY":                [100, 180, 255, 160],
+    # Residential
+    "RESIDENTIAL":                      [255, 218, 185, 180],  # peach/beige
+    "RESIDENTIAL WITH COMMERCIAL AT 1ST STOREY": [255, 200, 150, 180],
+    # Commercial
+    "COMMERCIAL":                       [255, 0, 0, 180],      # red
+    "COMMERCIAL & RESIDENTIAL":         [255, 160, 122, 180],  # light salmon
+    # Hotel
+    "HOTEL":                            [255, 105, 180, 180],  # hot pink
+    # White
+    "WHITE":                            [255, 255, 255, 200],  # white
+    # Business/Industrial
+    "BUSINESS 1":                       [153, 153, 255, 180],  # light purple
+    "BUSINESS 1 - WHITE":               [180, 153, 255, 180],
+    "BUSINESS 2":                       [102, 102, 204, 180],  # medium purple
+    "BUSINESS 2 - WHITE":               [130, 102, 204, 180],
+    "BUSINESS PARK":                    [204, 153, 255, 180],  # lavender
+    "BUSINESS PARK - WHITE":            [220, 180, 255, 180],
+    # Open space & greenery
+    "OPEN SPACE":                       [0, 180, 0, 180],      # green
+    "PARK":                             [0, 153, 0, 180],      # dark green
+    "NATURE RESERVE":                   [0, 102, 0, 180],      # very dark green
+    "BEACH AREA":                       [135, 206, 235, 180],  # sky blue
+    "WATERBODY":                        [0, 150, 255, 180],    # blue
+    # Transport
+    "TRANSPORT":                        [200, 200, 200, 180],  # grey
+    "ROAD":                             [220, 220, 220, 180],  # light grey
+    "MASS RAPID TRANSIT":               [160, 160, 160, 180],
+    # Civic & institutions
+    "CIVIC & COMMUNITY":                [0, 220, 220, 180],    # cyan
+    "EDUCATIONAL INSTITUTION":          [0, 191, 255, 180],    # deep sky blue
+    "HEALTH & MEDICAL CARE":            [255, 0, 128, 180],    # magenta
+    "PLACE OF WORSHIP":                 [210, 180, 140, 180],  # tan
+    "COMMUNITY INSTITUTION":            [100, 220, 220, 180],
+    # Utilities & others
+    "UTILITY":                          [255, 255, 0, 180],    # yellow
+    "SPECIAL USE":                      [200, 180, 160, 180],
+    "RESERVE SITE":                     [211, 211, 211, 180],  # light grey
+    "CEMETERY":                         [180, 180, 180, 180],
+    "PORT / AIRPORT":                   [160, 160, 160, 180],
+    "AGRICULTURE":                      [144, 238, 144, 180],  # light green
 }
-DEFAULT_COLOR = [200, 200, 200, 120]
+DEFAULT_COLOR = [220, 220, 220, 120]
 
 # ── DATA LOADERS ─────────────────────────────────────────
 @st.cache_data(ttl=43200)
