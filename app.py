@@ -145,7 +145,7 @@ if show_tx:
 if show_amenities and center_lat and onemap_token:
     amenity_data = []
 
-    # MRT from data.gov.sg
+    # MRT stations — separate layer with own tooltip
     if show_mrt:
         with st.spinner("Loading MRT stations..."):
             mrt_stations = load_mrt_stations()
@@ -154,7 +154,7 @@ if show_amenities and center_lat and onemap_token:
             s for s in mrt_stations
             if lat1 <= s["latitude"] <= lat2 and lon1 <= s["longitude"] <= lon2
         ]
-        amenity_data.extend(nearby_mrt)
+        layers += build_mrt_layer(nearby_mrt)
 
     # Selected OneMap themes
     if selected_themes:
