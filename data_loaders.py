@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import time
+import math
 from pyproj import Transformer
 
 TRANSFORMER = Transformer.from_crs("EPSG:3414", "EPSG:4326", always_xy=True)
@@ -305,3 +306,111 @@ def load_schools():
                 return [s for s in schools if s["latitude"] != 0]
         time.sleep(2)
     return []
+
+@st.cache_data(ttl=86400)
+def load_planning_area_boundaries():
+    """MP2019 planning area polygons with names."""
+    dataset_id = "d_bf4d24df9129d5a8ff8cf82e20959ee0"
+    poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
+    for _ in range(10):
+        r = requests.get(poll_url).json()
+        if r.get("code") == 0:
+            url = r.get("data", {}).get("url")
+            if url:
+                return requests.get(url).json()
+        time.sleep(2)
+    return None
+
+
+@st.cache_data(ttl=86400)
+def load_demographics():
+    """
+    Loads Census 2020 population by age and dwelling type,
+    returns a dict keyed by planning area name.
+    """
+    results = {}
+
+    # Age data
+    age_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_d95ae740c0f8961a0b10435836660ce0&limit=10000"
+    try:
+        age_data = requests.get(age_url, timeout=15).json().get("result", {}).get("records", [])
+        for row in age_data:
+            pa = row.get("PA", "").upper().strip()
+            if not pa or pa == "TOTAL":
+                continue
+            if pa not in results:
+                results[pa] = {"total_pop": 0, "young": 0, "elderly": 0, "dwelling": {}}
+            age_grp = row.get("AG", "")
+            pop = int(row.get("Pop", 0) or 0)
+            results[pa]["total_pop"] += pop
+            if age_grp in ["0_to_4", "5_to_9", "10_to_14", "15_to_19", "20_to_24"]:
+                results[pa]["young"] += pop
+            if age_grp in ["65_to_69", "70_to_74", "75_to_79", "80_to_84", "85_and_over"]:
+                results[pa]["elderly"] += pop
+    except:
+        pass
+
+    # Dwelling data
+    dwell_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_7f243956483d5901f237e6f87b096636&limit=10000"
+    try:
+        dwell_data = requests.get(dwell_url, timeout=15).json().get("result", {}).get("records", [])
+        for row in dwell_data:
+            pa = row.get("PA", "").upper().strip()
+            if not pa or pa == "TOTAL":
+                continue
+            if pa not in results:
+                results[pa] = {"total_pop": 0, "young": 0, "elderly": 0, "dwelling": {}}
+            dwell_type = row.get("DT", "")
+            pop = int(row.get("Pop", 0) or 0)
+            results[pa]["dwelling"][dwell_type] = results[pa]["dwelling"].get(dwell_type, 0) + pop
+    except:
+        pass
+
+    return results
+
+def build_planning_area_data(boundaries_geojson, demographics):
+    """Merge planning area boundaries with demographic stats."""
+    if not boundaries_geojson:
+        return []
+
+    planning_areas = []
+    for f in boundaries_geojson.get("features", []):
+        props = f.get("properties", {})
+        pa_name = props.get("PLN_AREA_N", props.get("PLANAREA", "")).upper().strip()
+        coords  = f["geometry"]["coordinates"]
+        demo    = demographics.get(pa_name, {})
+
+        total   = demo.get("total_pop", 0)
+        young   = demo.get("young", 0)
+        elderly = demo.get("elderly", 0)
+        dwell   = demo.get("dwelling", {})
+
+        hdb_keys     = [k for k in dwell if "HDB" in k.upper() or "PUBLIC" in k.upper()]
+        private_keys = [k for k in dwell if "PRIVATE" in k.upper() or "CONDOMINIUM" in k.upper() or "LANDED" in k.upper()]
+        hdb_pop      = sum(dwell[k] for k in hdb_keys)
+        private_pop  = sum(dwell[k] for k in private_keys)
+        dwell_total  = sum(dwell.values()) or 1
+
+        # Estimate area in km² from polygon (rough)
+        try:
+            flat  = coords[0] if isinstance(coords[0][0], list) else coords
+            lons  = [c[0] for c in flat]
+            lats  = [c[1] for c in flat]
+            width = (max(lons) - min(lons)) * 111 * abs(math.cos(math.radians(sum(lats)/len(lats))))
+            height= (max(lats) - min(lats)) * 111
+            area_km2 = width * height * 0.7  # rough polygon fill factor
+        except:
+            area_km2 = 1
+
+        planning_areas.append({
+            "coordinates":  coords,
+            "planning_area": pa_name,
+            "total_pop":    total,
+            "pct_young":    (young / total * 100) if total else 0,
+            "pct_elderly":  (elderly / total * 100) if total else 0,
+            "pct_hdb":      (hdb_pop / dwell_total * 100),
+            "pct_private":  (private_pop / dwell_total * 100),
+            "pop_density":  (total / area_km2) if area_km2 else 0,
+        })
+
+    return planning_areas
