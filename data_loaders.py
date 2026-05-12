@@ -9,7 +9,22 @@ TRANSFORMER = Transformer.from_crs("EPSG:3414", "EPSG:4326", always_xy=True)
 
 
 @st.cache_data(ttl=43200)
-def load_transactions(access_key):
+@st.cache_data(ttl=43200)
+def load_transactions(access_key=None):
+    """Load from cached CSV in repo. Falls back to API if CSV missing."""
+    import os
+    csv_path = os.path.join(os.path.dirname(__file__), "data", "ura_transactions.csv")
+    if os.path.exists(csv_path):
+        print("Loading from cached CSV...")
+        df = pd.read_csv(csv_path)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        return df
+    print("CSV not found, loading from API...")
+    return _load_transactions_from_api(access_key)
+
+
+@st.cache_data(ttl=43200)
+def _load_transactions_from_api(access_key):
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     token = requests.get(
         "https://eservice.ura.gov.sg/uraDataService/insertNewToken/v1",
@@ -61,36 +76,32 @@ def load_transactions(access_key):
     df["year"]  = "20" + df["contract_date"].str[2:]
     df["date"]  = pd.to_datetime(df["year"] + "-" + df["month"], format="%Y-%m", errors="coerce")
 
-    # Geocode projects missing coordinates using OneMap
+    # Geocode missing projects
     missing = df[df["latitude"].isna()]["project"].dropna().unique()
-    if len(missing) > 0:
-        geocoded = {}
-        for project in missing:
-            try:
-                url = (
-                    f"https://www.onemap.gov.sg/api/common/elastic/search"
-                    f"?searchVal={requests.utils.quote(project)}&returnGeom=Y&getAddrDetails=Y&pageNum=1"
+    geocoded = {}
+    for project in missing:
+        try:
+            url = (
+                f"https://www.onemap.gov.sg/api/common/elastic/search"
+                f"?searchVal={requests.utils.quote(project)}&returnGeom=Y&getAddrDetails=Y&pageNum=1"
+            )
+            r = requests.get(url, timeout=5).json()
+            if r.get("found", 0) > 0:
+                result = r["results"][0]
+                geocoded[project] = (
+                    round(float(result["LATITUDE"]), 6),
+                    round(float(result["LONGITUDE"]), 6)
                 )
-                r = requests.get(url, timeout=5).json()
-                if r.get("found", 0) > 0:
-                    result = r["results"][0]
-                    geocoded[project] = (
-                        round(float(result["LATITUDE"]), 6),
-                        round(float(result["LONGITUDE"]), 6)
-                    )
-            except:
-                pass
-            time.sleep(0.05)
+        except:
+            pass
+        time.sleep(0.05)
 
-        # Apply geocoded coordinates
-        for project, (lat, lon) in geocoded.items():
-            mask = (df["project"] == project) & (df["latitude"].isna())
-            df.loc[mask, "latitude"]  = lat
-            df.loc[mask, "longitude"] = lon
+    for project, (lat, lon) in geocoded.items():
+        mask = (df["project"] == project) & (df["latitude"].isna())
+        df.loc[mask, "latitude"]  = lat
+        df.loc[mask, "longitude"] = lon
 
     return df
-
-
 @st.cache_data(ttl=86400)
 def load_gls():
     dataset_id = "d_0e2b42f98535686282031a42c9c7b05a"
