@@ -210,3 +210,33 @@ def load_onemap_themes(token):
         return grouped
     except:
         return {}
+
+def search_onemap_keyword(keyword, lat, lon, radius_m):
+    """Search OneMap for a keyword and return nearby results."""
+    from utils import bbox, haversine
+    lat1, lon1, lat2, lon2 = bbox(lat, lon, radius_m)
+    url = (
+        f"https://www.onemap.gov.sg/api/common/elastic/search"
+        f"?searchVal={keyword}&returnGeom=Y&getAddrDetails=Y&pageNum=1"
+    )
+    try:
+        r = requests.get(url, timeout=10).json()
+        results = []
+        for item in r.get("results", []):
+            try:
+                lat_i = float(item.get("LATITUDE", 0))
+                lon_i = float(item.get("LONGITUDE", 0))
+                dist  = haversine(lat, lon, lat_i, lon_i)
+                if dist <= radius_m:
+                    results.append({
+                        "name":      item.get("BUILDING", item.get("ADDRESS", "")),
+                        "theme":     keyword,
+                        "latitude":  lat_i,
+                        "longitude": lon_i,
+                        "distance":  dist,
+                    })
+            except:
+                pass
+        return results
+    except:
+        return []
