@@ -363,47 +363,50 @@ def load_planning_area_boundaries():
 
 @st.cache_data(ttl=86400)
 def load_demographics():
-    """
-    Loads Census 2020 population by age and dwelling type,
-    returns a dict keyed by planning area name.
-    """
+    """Load Census 2020 population by planning area."""
     results = {}
 
-    # Age data
-    age_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_d95ae740c0f8961a0b10435836660ce0&limit=10000"
+    # Age data — filter for planning area totals (rows ending in " - Total")
+    age_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_d95ae740c0f8961a0b10435836660ce0&limit=500"
     try:
-        age_data = requests.get(age_url, timeout=15).json().get("result", {}).get("records", [])
-        for row in age_data:
-            pa = row.get("PA", "").upper().strip()
-            if not pa or pa == "TOTAL":
+        age_records = requests.get(age_url, timeout=15).json().get("result", {}).get("records", [])
+        for row in age_records:
+            number = row.get("Number", "")
+            if not number.endswith(" - Total"):
                 continue
-            if pa not in results:
-                results[pa] = {"total_pop": 0, "young": 0, "elderly": 0, "dwelling": {}}
-            age_grp = row.get("AG", "")
-            pop = int(row.get("Pop", 0) or 0)
-            results[pa]["total_pop"] += pop
-            if age_grp in ["0_to_4", "5_to_9", "10_to_14", "15_to_19", "20_to_24"]:
-                results[pa]["young"] += pop
-            if age_grp in ["65_to_69", "70_to_74", "75_to_79", "80_to_84", "85_and_over"]:
-                results[pa]["elderly"] += pop
-    except:
-        pass
+            pa = number.replace(" - Total", "").upper().strip()
+            total = int(row.get("Total_Total", 0) or 0)
+            young = sum(int(row.get(f"Total_{g}", 0) or 0) for g in ["0_4", "5_9", "10_14", "15_19", "20_24"])
+            elderly = sum(int(row.get(f"Total_{g}", 0) or 0) for g in ["65_69", "70_74", "75_79", "80_84", "85_89", "90andOver"])
+            results[pa] = {
+                "total_pop": total,
+                "young":     young,
+                "elderly":   elderly,
+            }
+    except Exception as e:
+        print(f"Age data error: {e}")
 
-    # Dwelling data
-    dwell_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_7f243956483d5901f237e6f87b096636&limit=10000"
+    # Dwelling data — same filter
+    dwell_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_7f243956483d5901f237e6f87b096636&limit=500"
     try:
-        dwell_data = requests.get(dwell_url, timeout=15).json().get("result", {}).get("records", [])
-        for row in dwell_data:
-            pa = row.get("PA", "").upper().strip()
-            if not pa or pa == "TOTAL":
+        dwell_records = requests.get(dwell_url, timeout=15).json().get("result", {}).get("records", [])
+        for row in dwell_records:
+            number = row.get("Number", "")
+            if not number.endswith(" - Total"):
                 continue
+            pa = number.replace(" - Total", "").upper().strip()
+            total = int(row.get("Total", 0) or 0)
+            hdb = int(row.get("HDBDwellings_Total", 0) or 0)
+            condo = int(row.get("CondominiumsandOtherApartments", 0) or 0)
+            landed = int(row.get("LandedProperties", 0) or 0)
             if pa not in results:
-                results[pa] = {"total_pop": 0, "young": 0, "elderly": 0, "dwelling": {}}
-            dwell_type = row.get("DT", "")
-            pop = int(row.get("Pop", 0) or 0)
-            results[pa]["dwelling"][dwell_type] = results[pa]["dwelling"].get(dwell_type, 0) + pop
-    except:
-        pass
+                results[pa] = {"total_pop": total, "young": 0, "elderly": 0}
+            results[pa]["hdb"]     = hdb
+            results[pa]["condo"]   = condo
+            results[pa]["landed"]  = landed
+            results[pa]["dwell_total"] = total
+    except Exception as e:
+        print(f"Dwelling data error: {e}")
 
     return results
 
