@@ -91,9 +91,10 @@ def load_masterplan():
 
 
 @st.cache_data(ttl=86400)
-@st.cache_data(ttl=1)
 def load_mrt_stations():
-    """Load MRT/LRT stations from URA Master Plan 2025 rail station polygons."""
+    """Load MRT/LRT stations from URA Master Plan 2025, enriched with line codes."""
+    from config import MRT_STATION_LINES, MRT_LINE_COLORS, MRT_DEFAULT_COLOR
+
     dataset_id = "d_2c06c9fe8ae724b5d33efa1f203e2c38"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(10):
@@ -106,7 +107,7 @@ def load_mrt_stations():
                 stations = []
                 for f in geojson.get("features", []):
                     props = f.get("properties", {})
-                    name  = props.get("NAME", "")
+                    name  = props.get("NAME", "").strip()
                     if not name or name in seen:
                         continue
                     seen.add(name)
@@ -118,11 +119,27 @@ def load_mrt_stations():
                         lat_s = sum(c[1] for c in flat) / len(flat)
                     except:
                         continue
+
+                    # Look up line codes — try exact match then partial
+                    name_upper = name.upper()
+                    # Strip " MRT STATION" or " LRT STATION" suffix
+                    clean = name_upper.replace(" MRT STATION", "").replace(" LRT STATION", "").strip()
+                    lines = MRT_STATION_LINES.get(clean, [])
+
+                    # Derive colour from first line
+                    color = MRT_LINE_COLORS.get(lines[0], MRT_DEFAULT_COLOR) if lines else MRT_DEFAULT_COLOR
+
+                    # Build line label e.g. "EW/CC"
+                    line_label = "/".join(lines) if lines else props.get("RAIL_TYPE", "MRT")
+
                     stations.append({
-                        "name":      name,
-                        "rail_type": props.get("RAIL_TYPE", "MRT"),
-                        "latitude":  lat_s,
-                        "longitude": lon_s,
+                        "name":       clean,
+                        "rail_type":  props.get("RAIL_TYPE", "MRT"),
+                        "lines":      lines,
+                        "line_label": line_label,
+                        "latitude":   lat_s,
+                        "longitude":  lon_s,
+                        "color":      color,
                     })
                 return stations
         time.sleep(2)
