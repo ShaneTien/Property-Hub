@@ -37,49 +37,24 @@ LAND_USE_COLORS = {
 }
 DEFAULT_MP_COLOR = [220, 220, 220, 120]
 
-# ── AMENITY GROUPS ───────────────────────────────────────
-AMENITY_GROUPS = {
-    "🚇 Transport (MRT/LRT)": {
-        "color":  [0, 102, 204, 240],
-        "source": "data.gov.sg (LTA)",
-        "themes": []  # loaded separately from data.gov.sg
-    },
-    "🏥 Healthcare": {
-        "color":  [204, 0, 0, 240],
-        "source": "OneMap (MOH)",
-        "themes": ["moh_hospitals", "vaccination_polyclinics", "registered_pharmacy", "blood_bank"]
-    },
-    "🏫 Schools & Education": {
-        "color":  [0, 153, 0, 240],
-        "source": "OneMap",
-        "themes": ["cpe_pei_premises", "cetcentres"]
-    },
-    "🏛️ Community": {
-        "color":  [204, 153, 0, 240],
-        "source": "OneMap (PA, NLB)",
-        "themes": ["libraries", "communityclubs", "ssot_hawkercentres", "eldercare", "sso"]
-    },
-    "🌳 Parks & Recreation": {
-        "color":  [0, 180, 60, 240],
-        "source": "OneMap (NParks)",
-        "themes": ["nationalparks", "sportsg_sport_facilities", "nparks_parks"]
-    },
-    "🎭 Culture & Tourism": {
-        "color":  [102, 0, 204, 240],
-        "source": "OneMap (NHB, STB)",
-        "themes": ["museum", "theatre", "historicsites", "monuments", "tourism"]
-    },
-    "🏨 Hotels": {
-        "color":  [255, 140, 0, 240],
-        "source": "OneMap (STB)",
-        "themes": ["hotels"]
-    },
-    "🚒 Emergency Services": {
-        "color":  [255, 50, 50, 240],
-        "source": "OneMap (SCDF)",
-        "themes": ["firestation", "aed_locations", "civildefencepublicshelters"]
-    },
+# ── AMENITY CATEGORY COLOURS ─────────────────────────────
+AMENITY_CATEGORY_COLORS = {
+    "Community":              [204, 153, 0,   240],
+    "Culture":                [102, 0,   204, 240],
+    "Education":              [0,   153, 0,   240],
+    "Emergency Preparedness": [255, 50,  50,  240],
+    "Employment":             [0,   180, 180, 240],
+    "Environment":            [0,   153, 0,   240],
+    "Family":                 [255, 180, 0,   240],
+    "Government Offices":     [150, 150, 150, 240],
+    "Health":                 [204, 0,   0,   240],
+    "National Service":       [100, 100, 200, 240],
+    "Recreation":             [0,   180, 60,  240],
+    "Sports":                 [0,   120, 255, 240],
+    "Other":                  [180, 180, 180, 240],
 }
+
+MRT_COLOR = [0, 102, 204, 240]
 
 # ── DATA SOURCES SUMMARY ─────────────────────────────────
 DATA_SOURCES = [
