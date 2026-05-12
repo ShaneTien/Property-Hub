@@ -46,29 +46,57 @@ with st.spinner("Loading URA transaction data..."):
 # ── SIDEBAR: SEARCH ──────────────────────────────────────
 st.sidebar.markdown("## 🔍 Location Search")
 search_query = st.sidebar.text_input("Search address or project", placeholder="e.g. Orchard Road")
-radius_m     = st.sidebar.slider("Search radius (m)", 250, 2000, 500, step=250)
 
-center_lat, center_lon, resolved_address = None, None, None
-if search_query:
-    center_lat, center_lon, resolved_address = geocode_address(search_query)
-    if center_lat:
-        st.sidebar.success(f"📍 {resolved_address}")
+# Persist geocoded location across reruns
+if "center_lat" not in st.session_state:
+    st.session_state.center_lat       = None
+    st.session_state.center_lon       = None
+    st.session_state.resolved_address = None
+    st.session_state.last_query       = ""
+
+if search_query and search_query != st.session_state.last_query:
+    lat, lon, addr = geocode_address(search_query)
+    if lat:
+        st.session_state.center_lat       = lat
+        st.session_state.center_lon       = lon
+        st.session_state.resolved_address = addr
+        st.session_state.last_query       = search_query
     else:
-        st.sidebar.error("Address not found.")
+        st.session_state.center_lat       = None
+        st.session_state.center_lon       = None
+        st.session_state.resolved_address = None
+        st.session_state.last_query       = search_query
+
+if not search_query:
+    st.session_state.center_lat       = None
+    st.session_state.center_lon       = None
+    st.session_state.resolved_address = None
+    st.session_state.last_query       = ""
+
+center_lat       = st.session_state.center_lat
+center_lon       = st.session_state.center_lon
+resolved_address = st.session_state.resolved_address
+
+if center_lat:
+    st.sidebar.success(f"📍 {resolved_address}")
+elif search_query:
+    st.sidebar.error("Address not found.")
 
 # ── SIDEBAR: LAYERS ──────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🗂️ Layers")
 
 # ── TRANSACTIONS ─────────────────────────────────────────
-show_tx    = st.sidebar.checkbox("Transactions", value=False)
-tx_view    = "Points"
+show_tx   = st.sidebar.checkbox("Transactions", value=False)
+tx_view   = "Points"
+radius_m  = 500
 segments, prop_types, sale_types = [], [], []
 date_range = None
 psf_range  = None
 
 if show_tx:
     with st.sidebar.expander("Transaction Filters"):
+        radius_m   = st.slider("Transaction radius (m)", 250, 2000, 500, step=250)
         tx_view    = st.radio("View", ["Points", "Heatmap"], horizontal=True)
         segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
         prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
@@ -86,17 +114,14 @@ show_gls = st.sidebar.checkbox("GLS Sites", value=False)
 show_mp  = st.sidebar.checkbox("Master Plan 2025", value=False)
 
 # ── AMENITIES ────────────────────────────────────────────
-show_amenities   = st.sidebar.checkbox("Amenities", value=False)
-amenity_radius_m = 1000
-selected_themes  = {}
-show_mrt         = False
-show_malls       = False
+show_amenities    = st.sidebar.checkbox("Amenities", value=False)
+amenity_radius_m  = st.sidebar.slider("Amenity radius (m)", 250, 2000, 1000, step=250)
+selected_themes   = {}
+show_mrt          = False
+show_malls        = False
 show_supermarkets = False
 
 if show_amenities:
-    with st.sidebar.expander("⚙️ Amenity Settings"):
-        amenity_radius_m = st.slider("Amenity radius (m)", 250, 2000, 1000, step=250)
-
     if center_lat and onemap_token:
         with st.sidebar.expander("🚇 Transport (MRT/LRT)"):
             show_mrt = st.checkbox("MRT / LRT Stations", value=True, key="am_mrt")
@@ -143,7 +168,7 @@ if sale_types:
     sale_map = {"1 - New Sale": "1", "2 - Sub Sale": "2", "3 - Resale": "3"}
     filtered = filtered[filtered["type_of_sale"].isin([sale_map[s] for s in sale_types])]
 filtered = filtered[filtered["latitude"].notna()]
-if center_lat:
+if center_lat and show_tx:
     filtered["distance_m"] = filtered.apply(
         lambda r: haversine(center_lat, center_lon, r["latitude"], r["longitude"]), axis=1
     )
@@ -234,7 +259,7 @@ if show_amenities and center_lat and onemap_token:
 
 # Radius ring
 if center_lat:
-    layers += build_radius_ring(center_lat, center_lon, radius_m)
+    layers += build_radius_ring(center_lat, center_lon, amenity_radius_m)
 
 # ── MAP ──────────────────────────────────────────────────
 view_state = pdk.ViewState(
