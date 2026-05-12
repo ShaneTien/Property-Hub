@@ -180,10 +180,9 @@ if show_amenities and center_lat and onemap_token:
     if show_mrt:
         with st.spinner("Loading MRT stations..."):
             mrt_stations = load_mrt_stations()
-        lat1, lon1, lat2, lon2 = bbox(center_lat, center_lon, amenity_radius_m)
-        nearby_mrt = [
+nearby_mrt = [
             s for s in mrt_stations
-            if lat1 <= s["latitude"] <= lat2 and lon1 <= s["longitude"] <= lon2
+            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= amenity_radius_m
         ]
         for s in nearby_mrt:
             s["category"]     = "🚇 Transport (MRT/LRT)"
@@ -299,7 +298,7 @@ if show_amenities and all_amenity_data:
         dist = a.get("distance", 0)
         rows.append({
             "Name":         a.get("name", ""),
-            "Line / Type":  a.get("line_label", a.get("theme", "")),
+            "Line / Type":  a.get("line_label") or a.get("theme", ""),
             "Category":     a.get("category", a.get("theme", "")),
             "Distance (m)": int(round(dist, 0)),
             "Walk (mins)":  int(round(dist / 80, 0)),
