@@ -3,19 +3,21 @@ import pydeck as pdk
 import pandas as pd
 
 from config import ONEMAP_BASEMAP, AMENITY_CATEGORY_COLORS, LAND_USE_COLORS, DATA_SOURCES
-from utils import haversine, bbox
+from utils import haversine
 from data_loaders import (
     load_transactions, load_gls, load_masterplan,
     load_mrt_stations, get_onemap_token,
     geocode_address, load_amenities_onemap,
-    load_onemap_themes, search_onemap_keyword, load_schools
+    load_onemap_themes, search_onemap_keyword, load_schools,
+    load_planning_area_boundaries, load_demographics, build_planning_area_data
 )
 from layers import (
     build_transaction_layer, build_gls_layer,
     build_masterplan_layer, build_amenity_layer,
     build_mrt_layer, build_radius_ring,
+    build_demographics_layer,
     TOOLTIP_TRANSACTIONS, TOOLTIP_GLS, TOOLTIP_MASTERPLAN,
-    TOOLTIP_MRT, TOOLTIP_AMENITY
+    TOOLTIP_MRT, TOOLTIP_AMENITY, TOOLTIP_DEMOGRAPHICS
 )
 from charts import render_charts
 
@@ -82,6 +84,9 @@ if center_lat:
 elif search_query:
     st.sidebar.error("Address not found.")
 
+# ── SINGLE RADIUS ─────────────────────────────────────────
+radius_m = st.sidebar.slider("Radius (m)", 250, 2000, 500, step=250)
+
 # ── SIDEBAR: LAYERS ──────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🗂️ Layers")
@@ -89,14 +94,12 @@ st.sidebar.markdown("## 🗂️ Layers")
 # ── TRANSACTIONS ─────────────────────────────────────────
 show_tx   = st.sidebar.checkbox("Transactions", value=False)
 tx_view   = "Points"
-radius_m  = 500
 segments, prop_types, sale_types = [], [], []
 date_range = None
 psf_range  = None
 
 if show_tx:
     with st.sidebar.expander("Transaction Filters"):
-        radius_m   = st.slider("Transaction radius (m)", 250, 2000, 500, step=250)
         tx_view    = st.radio("View", ["Points", "Heatmap"], horizontal=True)
         segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
         prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
@@ -113,9 +116,25 @@ show_gls = st.sidebar.checkbox("GLS Sites", value=False)
 # ── MASTER PLAN ──────────────────────────────────────────
 show_mp  = st.sidebar.checkbox("Master Plan 2025", value=False)
 
+# ── DEMOGRAPHICS ─────────────────────────────────────────
+show_demo    = st.sidebar.checkbox("Demographics", value=False)
+demo_metric  = "density"
+
+if show_demo:
+    with st.sidebar.expander("Demographics Settings"):
+        demo_metric = st.radio(
+            "Show by",
+            ["density", "age", "dwelling"],
+            format_func=lambda x: {
+                "density": "Population Density",
+                "age":     "% Elderly (65+)",
+                "dwelling":"% Private Housing"
+            }[x],
+            horizontal=False
+        )
+
 # ── AMENITIES ────────────────────────────────────────────
 show_amenities    = st.sidebar.checkbox("Amenities", value=False)
-amenity_radius_m  = st.sidebar.slider("Amenity radius (m)", 250, 2000, 1000, step=250)
 selected_themes   = {}
 show_mrt          = False
 show_malls        = False
@@ -123,38 +142,29 @@ show_supermarkets = False
 show_schools      = False
 
 if show_amenities:
-    if center_lat and onemap_token:
-        with st.sidebar.expander("🚇 Transport (MRT/LRT)"):
-            show_mrt = st.checkbox("MRT / LRT Stations", value=True, key="am_mrt")
+    with st.sidebar.expander("Amenity Filters"):
+        if center_lat and onemap_token:
+            show_mrt          = st.checkbox("🚇 MRT / LRT Stations",  value=True,  key="am_mrt")
+            show_malls        = st.checkbox("🛍️ Shopping Malls",       value=False, key="am_malls")
+            show_supermarkets = st.checkbox("🛒 Supermarkets",         value=False, key="am_supermarkets")
+            show_schools      = st.checkbox("🏫 Schools (MOE)",        value=False, key="am_schools")
 
-        with st.sidebar.expander("🛍️ Shopping & 🏫 Schools"):
-            show_malls        = st.checkbox("Shopping Malls",  value=False, key="am_malls")
-            show_supermarkets = st.checkbox("Supermarkets",    value=False, key="am_supermarkets")
-            show_schools      = st.checkbox("Schools (MOE)",   value=False, key="am_schools")
+            st.markdown("**OneMap Themes**")
+            with st.spinner("Loading theme list..."):
+                grouped_themes = load_onemap_themes(onemap_token)
 
-        with st.spinner("Loading theme list..."):
-            grouped_themes = load_onemap_themes(onemap_token)
-
-        for category, themes in sorted(grouped_themes.items()):
-            color = AMENITY_CATEGORY_COLORS.get(category, [180, 180, 180, 240])
-            with st.sidebar.expander(f"{category} ({len(themes)})"):
-                select_all = st.checkbox(
-                    "Select all", value=False,
-                    key=f"am_all_{category}"
-                )
-                for theme in sorted(themes, key=lambda x: x["name"]):
-                    checked = st.checkbox(
-                        theme["name"],
-                        value=select_all,
-                        key=f"am_{theme['queryName']}"
-                    )
-                    if checked:
-                        selected_themes[theme["queryName"]] = color
-
-    elif center_lat and not onemap_token:
-        st.sidebar.warning("OneMap credentials missing.")
-    else:
-        st.sidebar.warning("Search a location to load amenities.")
+            for category, themes in sorted(grouped_themes.items()):
+                color = AMENITY_CATEGORY_COLORS.get(category, [180, 180, 180, 240])
+                with st.expander(f"{category} ({len(themes)})"):
+                    select_all = st.checkbox("Select all", value=False, key=f"am_all_{category}")
+                    for theme in sorted(themes, key=lambda x: x["name"]):
+                        checked = st.checkbox(theme["name"], value=select_all, key=f"am_{theme['queryName']}")
+                        if checked:
+                            selected_themes[theme["queryName"]] = color
+        elif center_lat and not onemap_token:
+            st.warning("OneMap credentials missing.")
+        else:
+            st.warning("Search a location to load amenities.")
 
 # ── APPLY TRANSACTION FILTERS ────────────────────────────
 filtered = df_tx.copy()
@@ -178,6 +188,15 @@ if center_lat and show_tx:
 
 # ── BUILD LAYERS ─────────────────────────────────────────
 layers = []
+
+# Demographics
+demo_data = []
+if show_demo:
+    with st.spinner("Loading demographics..."):
+        boundaries = load_planning_area_boundaries()
+        demographics = load_demographics()
+        demo_data = build_planning_area_data(boundaries, demographics)
+    layers += build_demographics_layer(demo_data, demo_metric)
 
 # Master Plan
 if show_mp:
@@ -203,13 +222,12 @@ all_amenity_data = []
 
 if show_amenities and center_lat and onemap_token:
 
-    # MRT stations
     if show_mrt:
         with st.spinner("Loading MRT stations..."):
             mrt_stations = load_mrt_stations()
         nearby_mrt = [
             s for s in mrt_stations
-            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= amenity_radius_m
+            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= radius_m
         ]
         for s in nearby_mrt:
             s["category"]     = "🚇 Transport (MRT/LRT)"
@@ -218,12 +236,10 @@ if show_amenities and center_lat and onemap_token:
         layers += build_mrt_layer(nearby_mrt)
         all_amenity_data.extend(nearby_mrt)
 
-    # OneMap themes
     if selected_themes:
         items = load_amenities_onemap(
-            onemap_token,
-            list(selected_themes.keys()),
-            center_lat, center_lon, amenity_radius_m
+            onemap_token, list(selected_themes.keys()),
+            center_lat, center_lon, radius_m
         )
         for item in items:
             item["color"]        = selected_themes.get(item["theme"], [180, 180, 180, 240])
@@ -234,10 +250,9 @@ if show_amenities and center_lat and onemap_token:
         all_amenity_data.extend(items)
         layers += build_amenity_layer(items)
 
-    # Shopping malls
     if show_malls:
         with st.spinner("Loading malls..."):
-            malls = search_onemap_keyword("mall", center_lat, center_lon, amenity_radius_m)
+            malls = search_onemap_keyword("mall", center_lat, center_lon, radius_m)
         for m in malls:
             m["color"]        = [255, 100, 0, 240]
             m["category"]     = "🛍️ Shopping Malls"
@@ -246,14 +261,13 @@ if show_amenities and center_lat and onemap_token:
         all_amenity_data.extend(malls)
         layers += build_amenity_layer(malls)
 
-    # Supermarkets
     if show_supermarkets:
         with st.spinner("Loading supermarkets..."):
             supermarkets = (
-                search_onemap_keyword("fairprice",         center_lat, center_lon, amenity_radius_m) +
-                search_onemap_keyword("cold storage",      center_lat, center_lon, amenity_radius_m) +
-                search_onemap_keyword("giant supermarket", center_lat, center_lon, amenity_radius_m) +
-                search_onemap_keyword("sheng siong",       center_lat, center_lon, amenity_radius_m)
+                search_onemap_keyword("fairprice",         center_lat, center_lon, radius_m) +
+                search_onemap_keyword("cold storage",      center_lat, center_lon, radius_m) +
+                search_onemap_keyword("giant supermarket", center_lat, center_lon, radius_m) +
+                search_onemap_keyword("sheng siong",       center_lat, center_lon, radius_m)
             )
         for s in supermarkets:
             s["color"]        = [255, 150, 0, 240]
@@ -263,13 +277,12 @@ if show_amenities and center_lat and onemap_token:
         all_amenity_data.extend(supermarkets)
         layers += build_amenity_layer(supermarkets)
 
-    # Schools
     if show_schools:
         with st.spinner("Loading schools..."):
             all_schools = load_schools()
         nearby_schools = [
             s for s in all_schools
-            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= amenity_radius_m
+            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= radius_m
         ]
         for s in nearby_schools:
             s["color"]        = [0, 153, 0, 240]
@@ -285,7 +298,7 @@ if show_amenities and center_lat and onemap_token:
 
 # Radius ring
 if center_lat:
-    layers += build_radius_ring(center_lat, center_lon, amenity_radius_m)
+    layers += build_radius_ring(center_lat, center_lon, radius_m)
 
 # ── MAP ──────────────────────────────────────────────────
 view_state = pdk.ViewState(
@@ -295,22 +308,22 @@ view_state = pdk.ViewState(
     pitch=0,
 )
 
-# Tooltip selection
-if show_tx and not show_gls and not show_mp and not show_amenities:
+if show_tx and not show_gls and not show_mp and not show_amenities and not show_demo:
     active_tooltip = TOOLTIP_TRANSACTIONS
-elif show_gls and not show_tx and not show_mp and not show_amenities:
+elif show_gls and not show_tx and not show_mp and not show_amenities and not show_demo:
     active_tooltip = TOOLTIP_GLS
-elif show_mp and not show_tx and not show_gls and not show_amenities:
+elif show_mp and not show_tx and not show_gls and not show_amenities and not show_demo:
     active_tooltip = TOOLTIP_MASTERPLAN
-elif show_amenities and not show_tx and not show_gls and not show_mp:
+elif show_demo and not show_tx and not show_gls and not show_mp and not show_amenities:
+    active_tooltip = TOOLTIP_DEMOGRAPHICS
+elif show_amenities and not show_tx and not show_gls and not show_mp and not show_demo:
     active_tooltip = TOOLTIP_AMENITY
 else:
     active_tooltip = {
         "html": """
             <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.8;font-family:sans-serif'>
-            <b>{name}{project}{location}{lu_desc}</b><br/>
-            <span style='color:#666;font-size:11px'>{line_label}{theme}{devt_code}{street}</span><br/>
-            <span style='color:#666;font-size:11px'>{market_segment}{district}</span>
+            <b>{name}{project}{location}{lu_desc}{planning_area}</b><br/>
+            <span style='color:#666;font-size:11px'>{line_label}{theme}{devt_code}{street}</span>
             </div>
         """,
         "style": {"backgroundColor": "white", "color": "black"}
@@ -339,6 +352,43 @@ if show_mp and center_lat:
                 unsafe_allow_html=True
             )
 
+# ── DEMOGRAPHICS PANEL ───────────────────────────────────
+if show_demo and demo_data and center_lat:
+    st.markdown("---")
+    st.markdown("### 🏘️ Demographics")
+
+    # Find planning area containing search point
+    from utils import haversine as _hav
+    closest = min(demo_data, key=lambda x: _hav(
+        center_lat, center_lon,
+        sum(c[1] for c in (x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"])) /
+        len(x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"]),
+        sum(c[0] for c in (x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"])) /
+        len(x["coordinates"][0] if isinstance(x["coordinates"][0][0], list) else x["coordinates"])
+    ), default=None)
+
+    if closest:
+        st.markdown(f"**Planning Area: {closest['planning_area']}**")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Total Population",  closest["total_pop"])
+        col2.metric("Pop Density /km²",  closest["pop_density"])
+        col3.metric("Young (0-24)",      closest["pct_young"])
+        col4.metric("Elderly (65+)",     closest["pct_elderly"])
+        col5.metric("% Private Housing", closest["pct_private"])
+
+    # Full table
+    with st.expander("All Planning Areas"):
+        demo_df = pd.DataFrame([{
+            "Planning Area":   d["planning_area"],
+            "Population":      d["total_pop"],
+            "Density /km²":    d["pop_density"],
+            "% Young (0-24)":  d["pct_young"],
+            "% Elderly (65+)": d["pct_elderly"],
+            "% HDB":           d["pct_hdb"],
+            "% Private":       d["pct_private"],
+        } for d in demo_data]).sort_values("Population", ascending=False).reset_index(drop=True)
+        st.dataframe(demo_df, use_container_width=True, hide_index=True)
+
 # ── AMENITIES TABLE ──────────────────────────────────────
 if show_amenities and all_amenity_data:
     st.markdown("---")
@@ -356,7 +406,6 @@ if show_amenities and all_amenity_data:
         })
 
     amenity_df = pd.DataFrame(rows).sort_values(["Category", "Distance (m)"]).reset_index(drop=True)
-
     for category, group in amenity_df.groupby("Category"):
         with st.expander(f"{category} ({len(group)})"):
             st.dataframe(
