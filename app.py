@@ -466,24 +466,42 @@ if show_tx and len(filtered) > 0:
     tab1, tab2, tab3, tab4 = st.tabs(["PSF Trend", "Volume", "PSF Distribution", "By Property Type"])
 
     with tab1:
-        trend = filtered.groupby("date")["psf"].median().reset_index()
-        trend.columns = ["Date", "Median PSF"]
+        trend = (
+            filtered.groupby("date")["psf"]
+            .median()
+            .reset_index()
+            .rename(columns={"date": "Date", "psf": "Median PSF"})
+        )
+        trend["Date"] = trend["Date"].dt.strftime("%b %Y")
         st.line_chart(trend.set_index("Date"))
 
     with tab2:
-        vol = filtered.groupby("date").size().reset_index(name="Transactions")
+        vol = (
+            filtered.groupby("date")
+            .size()
+            .reset_index(name="Transactions")
+        )
+        vol["date"] = vol["date"].dt.strftime("%b %Y")
         st.bar_chart(vol.set_index("date"))
 
     with tab3:
         import numpy as np
         psf_vals = filtered["psf"].dropna()
         hist, edges = np.histogram(psf_vals, bins=40)
-        hist_df = pd.DataFrame({"PSF": edges[:-1], "Count": hist})
-        st.bar_chart(hist_df.set_index("PSF"))
+        hist_df = pd.DataFrame({
+            "PSF (S$)": [f"${int(e):,}" for e in edges[:-1]],
+            "Count": hist
+        })
+        st.bar_chart(hist_df.set_index("PSF (S$)"))
 
     with tab4:
-        by_type = filtered.groupby("property_type")["psf"].median().sort_values(ascending=False).reset_index()
-        by_type.columns = ["Property Type", "Median PSF"]
+        by_type = (
+            filtered.groupby("property_type")["psf"]
+            .median()
+            .sort_values(ascending=False)
+            .reset_index()
+            .rename(columns={"property_type": "Property Type", "psf": "Median PSF"})
+        )
         st.bar_chart(by_type.set_index("Property Type"))
 
     st.markdown("---")
