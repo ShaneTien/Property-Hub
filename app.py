@@ -104,14 +104,6 @@ if center_lat:
     )
     filtered = filtered[filtered["distance_m"] <= radius_m]
 
-# ── SUMMARY STATS ────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Transactions", f"{len(filtered):,}")
-col2.metric("Median PSF",   f"S${filtered['psf'].median():,.0f}"           if len(filtered) else "—")
-col3.metric("Median Price", f"S${filtered['price_sgd'].median()/1e6:.2f}M" if len(filtered) else "—")
-col4.metric("Avg Area",     f"{filtered['area_sqft'].mean():,.0f} sqft"    if len(filtered) else "—")
-st.markdown("---")
-
 # ── BUILD LAYERS ─────────────────────────────────────────
 layers = []
 
