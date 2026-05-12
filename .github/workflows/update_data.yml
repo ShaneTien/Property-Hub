@@ -1,5 +1,6 @@
 name: Update URA Transactions
 
+
 on:
   schedule:
     - cron: '0 18 * * 2,5'  # 2am SGT every Tuesday and Friday
