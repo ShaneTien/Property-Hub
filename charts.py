@@ -74,6 +74,15 @@ def chart_by_property_type(filtered):
 
 
 def render_charts(filtered):
+    # Summary stats
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Transactions", f"{len(filtered):,}")
+    col2.metric("Median PSF",   f"S${filtered['psf'].median():,.0f}")
+    col3.metric("Median Price", f"S${filtered['price_sgd'].median()/1e6:.2f}M")
+    col4.metric("Avg Area",     f"{filtered['area_sqft'].mean():,.0f} sqft")
+    st.markdown("---")
+
+    # Charts
     st.markdown("### 📊 Transaction Analysis")
     tab1, tab2, tab3, tab4 = st.tabs([
         "PSF Trend", "Volume", "PSF Distribution", "By Property Type"
