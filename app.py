@@ -1,3 +1,4 @@
+import json
 import os
 import streamlit as st
 import pydeck as pdk
@@ -49,7 +50,7 @@ except:
 
 # ── LOAD TRANSACTIONS ────────────────────────────────────
 with st.spinner("Loading URA transaction data..."):
-    df_tx = load_transactions(access_key)
+    df_tx, _tx_fetched_at = load_transactions(access_key)
 
 _csv_path  = os.path.join(os.path.dirname(__file__), "data", "ura_transactions.csv")
 _csv_mtime = (
@@ -204,8 +205,8 @@ layers = []
 demo_data = []
 if show_demo:
     with st.spinner("Loading demographics..."):
-        boundaries = load_planning_area_boundaries()
-        demographics = load_demographics()
+        boundaries, _bounds_fetched_at = load_planning_area_boundaries()
+        demographics, _demo_fetched_at = load_demographics()
         demo_data = build_planning_area_data(boundaries, demographics)
     layers += build_demographics_layer(demo_data, demo_metric)
 
@@ -215,13 +216,13 @@ if show_mp:
         st.warning("⚠️ Search a location first to load Master Plan.")
     else:
         with st.spinner("Loading Master Plan 2025..."):
-            mp_geojson = load_masterplan()
+            mp_geojson, _mp_fetched_at = load_masterplan()
         layers += build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m)
 
 # GLS
 if show_gls:
     with st.spinner("Loading GLS sites..."):
-        gls_geojson = load_gls()
+        gls_geojson, _gls_fetched_at = load_gls()
     layers += build_gls_layer(gls_geojson)
 
 # Transactions
@@ -235,7 +236,7 @@ if show_amenities and center_lat and onemap_token:
 
     if show_mrt:
         with st.spinner("Loading MRT stations..."):
-            mrt_stations = load_mrt_stations()
+            mrt_stations, _mrt_fetched_at = load_mrt_stations()
         nearby_mrt = [
             s for s in mrt_stations
             if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= radius_m
@@ -290,7 +291,7 @@ if show_amenities and center_lat and onemap_token:
 
     if show_schools:
         with st.spinner("Loading schools..."):
-            all_schools = load_schools()
+            all_schools, _schools_fetched_at = load_schools()
         nearby_schools = [
             s for s in all_schools
             if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= radius_m
@@ -446,31 +447,108 @@ if show_tx and len(filtered) > 0:
 
 # ── DATA SOURCES DIALOG ──────────────────────────────────
 @st.dialog("Data Sources & Reference", width="large")
-def _show_data_sources_dialog():
-    tx_updated = (
-        _csv_mtime.strftime("%d %b %Y, %H:%M")
-        if _csv_mtime is not None
+def _show_data_sources_dialog(df_tx, csv_mtime, tx_min, tx_max):
+    with st.spinner("Preparing downloads..."):
+        gls_geojson,  gls_fetched    = load_gls()
+        mp_geojson,   mp_fetched     = load_masterplan()
+        mrt_stations, mrt_fetched    = load_mrt_stations()
+        boundaries,   bounds_fetched = load_planning_area_boundaries()
+        demographics, demo_fetched   = load_demographics()
+        schools,      sch_fetched    = load_schools()
+
+    demo_pa = build_planning_area_data(boundaries, demographics) if boundaries and demographics else []
+
+    def _fmt(ts):
+        return ts.strftime("%d %b %Y, %H:%M") if ts else "—"
+
+    tx_pulled = (
+        csv_mtime.strftime("%d %b %Y, %H:%M") if csv_mtime is not None
         else (
-            f"{_tx_min.strftime('%b %Y')} – {_tx_max.strftime('%b %Y')}"
-            if pd.notna(_tx_min) and pd.notna(_tx_max)
-            else "Unknown"
+            f"{tx_min.strftime('%b %Y')} – {tx_max.strftime('%b %Y')}"
+            if pd.notna(tx_min) and pd.notna(tx_max) else "—"
         )
     )
-    header = st.columns([2, 4, 2])
-    header[0].markdown("**Layer**")
-    header[1].markdown("**Source**")
-    header[2].markdown("**Last Updated**")
-    st.divider()
+
+    def _csv(df):
+        return df.to_csv(index=False).encode("utf-8")
+
+    def _json(obj):
+        return json.dumps(obj).encode("utf-8") if obj else None
+
+    demos_df = pd.DataFrame([{
+        "Planning Area":   d["planning_area"],
+        "Total Population": d["total_pop"],
+        "Density /km²":    d["pop_density"],
+        "% Young (0-24)":  d["pct_young"],
+        "% Elderly (65+)": d["pct_elderly"],
+        "% HDB":           d["pct_hdb"],
+        "% Private":       d["pct_private"],
+    } for d in demo_pa]) if demo_pa else pd.DataFrame()
+
+    mrt_df = pd.DataFrame([{
+        "name":       s["name"],
+        "lines":      "/".join(s.get("lines", [])),
+        "rail_type":  s.get("rail_type", ""),
+        "latitude":   s["latitude"],
+        "longitude":  s["longitude"],
+    } for s in mrt_stations]) if mrt_stations else pd.DataFrame()
+
+    sch_df = pd.DataFrame([{
+        "name":      s["name"],
+        "level":     s.get("theme", ""),
+        "latitude":  s["latitude"],
+        "longitude": s["longitude"],
+    } for s in schools]) if schools else pd.DataFrame()
+
+    # dl_key → (bytes, filename, mime, pulled_str)
+    _downloads = {
+        "ura_transactions": (_csv(df_tx),                   "ura_transactions.csv",      "text/csv",              tx_pulled),
+        "gls":              (_json(gls_geojson),             "gls_sites.geojson",         "application/geo+json",  _fmt(gls_fetched)),
+        "masterplan":       (_json(mp_geojson),              "masterplan_2025.geojson",   "application/geo+json",  _fmt(mp_fetched)),
+        "mrt":              (_csv(mrt_df) if not mrt_df.empty else None,
+                                                             "mrt_stations.csv",          "text/csv",              _fmt(mrt_fetched)),
+        "boundaries":       (_json(boundaries),              "planning_areas.geojson",    "application/geo+json",  _fmt(bounds_fetched)),
+        "demographics":     (_csv(demos_df) if not demos_df.empty else None,
+                                                             "demographics.csv",          "text/csv",              _fmt(demo_fetched)),
+        "schools":          (_csv(sch_df) if not sch_df.empty else None,
+                                                             "schools.csv",               "text/csv",              _fmt(sch_fetched)),
+    }
+
     for row in DATA_SOURCES:
-        updated = tx_updated if row["updated"] is None else row["updated"]
-        col1, col2, col3 = st.columns([2, 4, 2])
-        col1.markdown(row["layer"])
-        col2.markdown(f"[{row['source']}]({row['url']})")
-        col3.markdown(updated)
+        host_updated = tx_pulled if row["updated"] is None else row["updated"]
+        dl_key       = row.get("dl_key")
+        dl_bytes, dl_file, dl_mime, pulled_str = _downloads.get(dl_key, (None, None, None, "—"))
+
+        col_left, col_right = st.columns([3, 2])
+        with col_left:
+            st.markdown(f"**{row['layer']}**")
+            st.markdown(f"[{row['source']}]({row['url']})")
+            st.caption(f"Host updated: {host_updated}")
+        with col_right:
+            st.code(row.get("api", "—"), language=None)
+            st.caption(f"Last pulled: {pulled_str}")
+            if dl_bytes:
+                st.download_button(
+                    "⬇️ Download",
+                    data=dl_bytes,
+                    file_name=dl_file,
+                    mime=dl_mime,
+                    key=f"dl_{dl_key}_{row['layer']}",
+                )
+            elif dl_key is None:
+                st.caption("Live — varies by search")
+            else:
+                st.caption("Not yet loaded")
+        st.divider()
 
 # ── SIDEBAR: FOOTER ──────────────────────────────────────
 st.sidebar.markdown("---")
 if st.sidebar.button("📋 Data Sources & Reference"):
-    _show_data_sources_dialog()
+    _show_data_sources_dialog(
+        df_tx=df_tx,
+        csv_mtime=_csv_mtime,
+        tx_min=_tx_min,
+        tx_max=_tx_max,
+    )
 
 st.sidebar.caption("Property Hub · URA · OneMap · data.gov.sg")

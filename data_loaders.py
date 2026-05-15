@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import time
 import math
+from datetime import datetime
 from pyproj import Transformer
 
 TRANSFORMER = Transformer.from_crs("EPSG:3414", "EPSG:4326", always_xy=True)
@@ -12,14 +13,16 @@ TRANSFORMER = Transformer.from_crs("EPSG:3414", "EPSG:4326", always_xy=True)
 def load_transactions(access_key=None):
     """Load from cached CSV in repo. Falls back to API if CSV missing."""
     import os
+    fetched_at = datetime.now()
     csv_path = os.path.join(os.path.dirname(__file__), "data", "ura_transactions.csv")
     if os.path.exists(csv_path):
         print("Loading from cached CSV...")
         df = pd.read_csv(csv_path)
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        return df
+        return df, fetched_at
     print("CSV not found, loading from API...")
-    return _load_transactions_from_api(access_key)
+    df = _load_transactions_from_api(access_key)
+    return df, fetched_at
 
 
 @st.cache_data(ttl=43200)
@@ -103,6 +106,7 @@ def _load_transactions_from_api(access_key):
     return df
 @st.cache_data(ttl=86400)
 def load_gls():
+    fetched_at = datetime.now()
     dataset_id = "d_0e2b42f98535686282031a42c9c7b05a"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(10):
@@ -110,13 +114,14 @@ def load_gls():
         if r.get("code") == 0:
             url = r.get("data", {}).get("url")
             if url:
-                return requests.get(url).json()
+                return requests.get(url).json(), fetched_at
         time.sleep(2)
-    return None
+    return None, fetched_at
 
 
 @st.cache_data(ttl=86400)
 def load_masterplan():
+    fetched_at = datetime.now()
     dataset_id = "d_a8c3546b26712e35021f3a681d0353ae"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(15):
@@ -124,9 +129,9 @@ def load_masterplan():
         if r.get("code") == 0:
             url = r.get("data", {}).get("url")
             if url:
-                return requests.get(url).json()
+                return requests.get(url).json(), fetched_at
         time.sleep(2)
-    return None
+    return None, fetched_at
 
 
 @st.cache_data(ttl=86400)
@@ -134,6 +139,7 @@ def load_mrt_stations():
     """Load MRT/LRT stations from URA Master Plan 2025, enriched with line codes."""
     from config import MRT_STATION_LINES, MRT_LINE_COLORS, MRT_DEFAULT_COLOR
 
+    fetched_at = datetime.now()
     dataset_id = "d_2c06c9fe8ae724b5d33efa1f203e2c38"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(10):
@@ -159,9 +165,7 @@ def load_mrt_stations():
                     except:
                         continue
 
-                    # Look up line codes — try exact match then partial
                     name_upper = name.upper()
-                    # Strip " MRT STATION" or " LRT STATION" suffix
                     clean = (name_upper
                         .replace(" MRT STATION", "")
                         .replace(" LRT STATION", "")
@@ -169,11 +173,7 @@ def load_mrt_stations():
                         .replace(" STATION", "")
                         .strip())
                     lines = MRT_STATION_LINES.get(clean, [])
-
-                    # Derive colour from first line
                     color = MRT_LINE_COLORS.get(lines[0], MRT_DEFAULT_COLOR) if lines else MRT_DEFAULT_COLOR
-
-                    # Build line label e.g. "EW/CC"
                     line_label = "/".join(lines) if lines else props.get("RAIL_TYPE", "MRT")
 
                     stations.append({
@@ -185,9 +185,9 @@ def load_mrt_stations():
                         "longitude":  lon_s,
                         "color":      color,
                     })
-                return stations
+                return stations, fetched_at
         time.sleep(2)
-    return []
+    return [], fetched_at
 
 
 @st.cache_data(ttl=82800)
@@ -322,6 +322,7 @@ def search_onemap_keyword(keyword, lat, lon, radius_m):
 @st.cache_data(ttl=86400)
 def load_schools():
     """Load MOE schools from data.gov.sg."""
+    fetched_at = datetime.now()
     dataset_id = "d_688b934f82c1059ed0a6993d2a829089"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(10):
@@ -341,13 +342,14 @@ def load_schools():
                         })
                     except:
                         pass
-                return [s for s in schools if s["latitude"] != 0]
+                return [s for s in schools if s["latitude"] != 0], fetched_at
         time.sleep(2)
-    return []
+    return [], fetched_at
 
 @st.cache_data(ttl=86400)
 def load_planning_area_boundaries():
     """MP2019 planning area polygons with names."""
+    fetched_at = datetime.now()
     dataset_id = "d_bf4d24df9129d5a8ff8cf82e20959ee0"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(10):
@@ -355,14 +357,15 @@ def load_planning_area_boundaries():
         if r.get("code") == 0:
             url = r.get("data", {}).get("url")
             if url:
-                return requests.get(url).json()
+                return requests.get(url).json(), fetched_at
         time.sleep(2)
-    return None
+    return None, fetched_at
 
 
 @st.cache_data(ttl=86400)
 def load_demographics():
     """Load Census 2020 population by planning area."""
+    fetched_at = datetime.now()
     results = {}
 
     # Age data — rows ending in " - Total" are planning area totals
@@ -403,7 +406,7 @@ def load_demographics():
     except Exception as e:
         print(f"Dwelling data error: {e}")
 
-    return results
+    return results, fetched_at
     
 def build_planning_area_data(boundaries_geojson, demographics):
     """Merge planning area boundaries with demographic stats."""
