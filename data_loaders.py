@@ -105,6 +105,21 @@ def _load_transactions_from_api(access_key):
     return df
 
 
+@st.cache_data(ttl=86400)
+def load_masterplan():
+    fetched_at = datetime.now()
+    dataset_id = "d_a8c3546b26712e35021f3a681d0353ae"
+    poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
+    for _ in range(15):
+        r = requests.get(poll_url).json()
+        if r.get("code") == 0:
+            url = r.get("data", {}).get("url")
+            if url:
+                return requests.get(url).json(), fetched_at
+        time.sleep(2)
+    return None, fetched_at
+
+
 def geocode_address(address):
     url = (
         f"https://www.onemap.gov.sg/api/common/elastic/search"
