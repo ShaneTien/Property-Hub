@@ -155,23 +155,29 @@ with st.sidebar:
             segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
             prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
             sale_types = st.multiselect("Type of Sale", ["1 - New Sale", "2 - Sub Sale", "3 - Resale"], default=[])
-            min_date   = df_tx["date"].min().to_pydatetime()
-            max_date   = df_tx["date"].max().to_pydatetime()
-            date_range = st.slider("Contract Date", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="MMM YYYY")
+            min_date = df_tx["date"].min().to_pydatetime()
+            max_date = df_tx["date"].max().to_pydatetime()
 
-            st.markdown("---")
-            p1, p2 = st.columns([1, 3])
-            with p1:
-                btn_label = "⏸ Pause" if st.session_state.is_playing else "▶ Play"
-                if st.button(btn_label, key="play_btn"):
-                    st.session_state.is_playing = not st.session_state.is_playing
-                    if st.session_state.is_playing:
-                        st.session_state.play_month_idx = 0
-            with p2:
-                if st.session_state.is_playing and _play_months:
-                    cur = _play_months[st.session_state.play_month_idx]
-                    n   = len(_play_months)
-                    st.caption(f"▶ {cur.strftime('%b %Y')}  ({st.session_state.play_month_idx + 1} / {n})")
+            # Move slider thumb to current play month
+            if st.session_state.get("is_playing") and _play_months:
+                play_idx  = min(st.session_state.play_month_idx, len(_play_months) - 1)
+                play_date = _play_months[play_idx]
+                st.session_state["tx_date_slider"] = (play_date, play_date)
+
+            date_range = st.slider(
+                "Contract Date",
+                min_value=min_date,
+                max_value=max_date,
+                value=(min_date, max_date),
+                format="MMM YYYY",
+                key="tx_date_slider",
+                disabled=st.session_state.get("is_playing", False),
+            )
+
+            if st.button("⏸" if st.session_state.is_playing else "▶", key="play_btn"):
+                st.session_state.is_playing = not st.session_state.is_playing
+                if st.session_state.is_playing:
+                    st.session_state.play_month_idx = 0
 
     # Amenities
     show_amenities = st.checkbox("Amenities", value=False)
@@ -501,6 +507,7 @@ if st.session_state.get("is_playing") and show_tx and _play_months:
     next_idx = st.session_state.play_month_idx + 1
     if next_idx >= len(_play_months):
         st.session_state.is_playing = False
+        st.session_state["tx_date_slider"] = (_tx_min.to_pydatetime(), _tx_max.to_pydatetime())
     else:
         st.session_state.play_month_idx = next_idx
     st.rerun()
