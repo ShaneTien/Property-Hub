@@ -46,8 +46,7 @@ TOOLTIP_AMENITY = {
 TOOLTIP_HEX = {
     "html": """
         <div style='font-size:12px;padding:8px;max-width:200px;line-height:1.8;font-family:sans-serif'>
-        <b>Mean PSF: S${colorValue:.0f}</b><br/>
-        Transactions: {elevationValue}
+        <b>Transactions: {elevationValue}</b>
         </div>
     """,
     "style": {"backgroundColor": "white", "color": "black", "padding": "0"}

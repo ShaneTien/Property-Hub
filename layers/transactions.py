@@ -1,16 +1,6 @@
 import pydeck as pdk
 from utils import psf_to_color
 
-# Green → yellow → red, low→high PSF (RGB, not RGBA)
-_PSF_COLOR_RANGE = [
-    [0,   200, 0  ],
-    [100, 220, 0  ],
-    [200, 220, 0  ],
-    [255, 180, 0  ],
-    [255, 100, 0  ],
-    [255, 0,   0  ],
-]
-
 
 def build_transaction_layer(filtered, tx_view,
                              hex_radius=500, grid_size=1000, extruded=False):
@@ -28,43 +18,35 @@ def build_transaction_layer(filtered, tx_view,
         )]
 
     if tx_view == "Hexagon":
-        data = filtered[["latitude", "longitude", "psf"]].dropna().to_dict("records")
+        data = filtered[["latitude", "longitude"]].dropna().to_dict("records")
         return [pdk.Layer(
             "HexagonLayer",
             data=data,
             get_position=["longitude", "latitude"],
-            get_color_weight="psf",
-            get_elevation_weight="psf",
-            color_aggregation="MEAN",
-            elevation_aggregation="SUM",
             radius=hex_radius,
-            elevation_scale=4,
+            elevation_scale=50,
             extruded=extruded,
             pickable=True,
-            coverage=0.85,
-            color_range=_PSF_COLOR_RANGE,
+            auto_highlight=True,
+            coverage=1,
             opacity=0.8,
         )]
 
     if tx_view == "Grid":
-        data = filtered[["latitude", "longitude", "psf"]].dropna().to_dict("records")
+        data = filtered[["latitude", "longitude"]].dropna().to_dict("records")
         return [pdk.Layer(
             "GridLayer",
             data=data,
             get_position=["longitude", "latitude"],
-            get_color_weight="psf",
-            get_elevation_weight="psf",
-            color_aggregation="MEAN",
-            elevation_aggregation="SUM",
             cell_size=grid_size,
-            elevation_scale=4,
+            elevation_scale=50,
             extruded=extruded,
             pickable=True,
-            color_range=_PSF_COLOR_RANGE,
+            auto_highlight=True,
             opacity=0.8,
         )]
 
-    # Points — radius in metres, clamped to pixel bounds so they scale on zoom
+    # Points
     min_psf = filtered["psf"].min()
     max_psf = filtered["psf"].max()
     tx_map  = filtered.copy()

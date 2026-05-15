@@ -388,7 +388,7 @@ if show_tx and len(filtered) > 0:
     if tx_view == "Points":
         st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
     elif tx_view in ("Hexagon", "Grid"):
-        st.markdown("🟢 Low mean PSF &nbsp;&nbsp;&nbsp; 🔴 High mean PSF &nbsp;&nbsp;&nbsp; Height = transaction count")
+        st.markdown("🟦 Low count &nbsp;&nbsp;&nbsp; 🟥 High count &nbsp;&nbsp;&nbsp; Colour and height = transaction density")
 
 # ── MASTER PLAN LEGEND ────────────────────────────────────
 if show_mp:
