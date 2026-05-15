@@ -6,4 +6,5 @@ from layers.shared       import build_radius_ring
 from layers.tooltips     import (
     TOOLTIP_TRANSACTIONS, TOOLTIP_MASTERPLAN,
     TOOLTIP_MRT, TOOLTIP_AMENITY, TOOLTIP_COMBINED, TOOLTIP_MIXED,
+    TOOLTIP_HEX,
 )

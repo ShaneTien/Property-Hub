@@ -43,6 +43,16 @@ TOOLTIP_AMENITY = {
 }
 
 # Used when more than one layer type is active simultaneously
+TOOLTIP_HEX = {
+    "html": """
+        <div style='font-size:12px;padding:8px;max-width:200px;line-height:1.8;font-family:sans-serif'>
+        <b>Mean PSF: S${colorValue:.0f}</b><br/>
+        Transactions: {elevationValue}
+        </div>
+    """,
+    "style": {"backgroundColor": "white", "color": "black", "padding": "0"}
+}
+
 TOOLTIP_COMBINED = {
     "html": """
         <div style='font-size:12px;padding:8px;max-width:260px;line-height:1.8;font-family:sans-serif'>

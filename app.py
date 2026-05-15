@@ -15,7 +15,7 @@ from layers import (
     build_transaction_layer, build_masterplan_layer,
     build_mrt_layer, build_amenity_layer, build_radius_ring,
     TOOLTIP_TRANSACTIONS, TOOLTIP_MASTERPLAN,
-    TOOLTIP_MRT, TOOLTIP_AMENITY, TOOLTIP_COMBINED,
+    TOOLTIP_MRT, TOOLTIP_AMENITY, TOOLTIP_COMBINED, TOOLTIP_HEX,
 )
 from charts import render_charts
 
@@ -50,6 +50,9 @@ _tx_max = df_tx["date"].dropna().max()
 
 # ── DEFAULTS ──────────────────────────────────────────────
 tx_view           = "Points"
+hex_radius        = 200
+grid_size         = 500
+extruded          = False
 segments          = []
 prop_types        = []
 sale_types        = []
@@ -124,7 +127,17 @@ with st.sidebar:
     show_tx = st.checkbox("Transactions", value=True)
     if show_tx:
         with st.expander("Transaction Filters"):
-            tx_view    = st.radio("View", ["Points", "Heatmap"], horizontal=True)
+            tx_view = st.radio(
+                "View",
+                ["Points", "Heatmap", "Hexagon", "Grid"],
+                horizontal=True,
+            )
+            if tx_view == "Hexagon":
+                hex_radius = st.slider("Hex radius (m)", 100, 1000, 200, step=50)
+                extruded   = st.checkbox("3D extrusion", value=False)
+            elif tx_view == "Grid":
+                grid_size = st.slider("Cell size (m)", 100, 2000, 500, step=100)
+                extruded  = st.checkbox("3D extrusion", value=False)
             segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
             prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
             sale_types = st.multiselect("Type of Sale", ["1 - New Sale", "2 - Sub Sale", "3 - Resale"], default=[])
@@ -191,7 +204,10 @@ if show_mp:
 
 # Transactions
 if show_tx:
-    layers += build_transaction_layer(filtered, tx_view)
+    layers += build_transaction_layer(
+        filtered, tx_view,
+        hex_radius=hex_radius, grid_size=grid_size, extruded=extruded,
+    )
 
 # Amenities
 SCHOOL_LEVEL_CODES = {
@@ -315,7 +331,7 @@ view_state = pdk.ViewState(
     latitude=center_lat  if center_lat else 1.3521,
     longitude=center_lon if center_lon else 103.8198,
     zoom=14 if center_lat else 11,
-    pitch=0,
+    pitch=45 if extruded else 0,
 )
 
 active_layers = [show_tx, show_mp, show_amenities and bool(all_amenity_data)]
@@ -325,6 +341,8 @@ elif show_mp:
     active_tooltip = TOOLTIP_MASTERPLAN
 elif show_amenities and all_amenity_data:
     active_tooltip = TOOLTIP_AMENITY
+elif show_tx and tx_view in ("Hexagon", "Grid"):
+    active_tooltip = TOOLTIP_HEX
 else:
     active_tooltip = TOOLTIP_TRANSACTIONS
 
@@ -335,8 +353,11 @@ st.pydeck_chart(pdk.Deck(
     map_style=ONEMAP_BASEMAP,
 ), height=650)
 
-if show_tx and tx_view == "Points" and len(filtered) > 0:
-    st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
+if show_tx and len(filtered) > 0:
+    if tx_view == "Points":
+        st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
+    elif tx_view in ("Hexagon", "Grid"):
+        st.markdown("🟢 Low mean PSF &nbsp;&nbsp;&nbsp; 🔴 High mean PSF &nbsp;&nbsp;&nbsp; Height = transaction count")
 
 # ── MASTER PLAN LEGEND ────────────────────────────────────
 if show_mp:
