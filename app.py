@@ -6,10 +6,16 @@ import pandas as pd
 
 from config import ONEMAP_BASEMAP, LAND_USE_COLORS, DATA_SOURCES
 from utils import haversine
-from data_loaders import load_transactions, load_masterplan, geocode_address
+from data_loaders import (
+    load_transactions, load_masterplan,
+    load_mrt_stations, load_schools, search_onemap_keyword,
+    geocode_address,
+)
 from layers import (
-    build_transaction_layer, build_masterplan_layer, build_radius_ring,
-    TOOLTIP_TRANSACTIONS, TOOLTIP_MASTERPLAN, TOOLTIP_MIXED,
+    build_transaction_layer, build_masterplan_layer,
+    build_mrt_layer, build_amenity_layer, build_radius_ring,
+    TOOLTIP_TRANSACTIONS, TOOLTIP_MASTERPLAN,
+    TOOLTIP_MRT, TOOLTIP_AMENITY, TOOLTIP_COMBINED,
 )
 from charts import render_charts
 
@@ -41,6 +47,23 @@ _csv_mtime = (
 )
 _tx_min = df_tx["date"].dropna().min()
 _tx_max = df_tx["date"].dropna().max()
+
+# ── DEFAULTS (overridden by sidebar widgets) ──────────────
+tx_view         = "Points"
+segments        = []
+prop_types      = []
+sale_types      = []
+date_range      = None
+mp_opacity      = 0.6
+show_amenities  = False
+show_mrt        = False
+show_hospitals  = False
+show_malls      = False
+show_supermarkets = False
+show_schools_am = False
+school_levels   = []
+show_parks      = False
+show_cc         = False
 
 # ── SIDEBAR ───────────────────────────────────────────────
 with st.sidebar:
@@ -88,11 +111,17 @@ with st.sidebar:
 
     # ── LAYERS TAB ────────────────────────────────────────
     with tab_layers:
-        show_tx = st.checkbox("Transactions", value=True)
-        tx_view = "Points"
-        segments, prop_types, sale_types = [], [], []
-        date_range = None
 
+        # Master Plan
+        show_mp = st.checkbox("Master Plan 2025", value=False)
+        if show_mp:
+            mp_opacity = st.slider(
+                "Transparency", 0, 100, 60, step=5,
+                key="mp_opacity", format="%d%%"
+            ) / 100
+
+        # Transactions
+        show_tx = st.checkbox("Transactions", value=True)
         if show_tx:
             with st.expander("Transaction Filters"):
                 tx_view    = st.radio("View", ["Points", "Heatmap"], horizontal=True)
@@ -103,11 +132,26 @@ with st.sidebar:
                 max_date   = df_tx["date"].max().to_pydatetime()
                 date_range = st.slider("Contract Date", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="MMM YYYY")
 
-        show_mp    = st.checkbox("Master Plan 2025", value=False)
-        mp_opacity = 0.6
-        if show_mp:
-            mp_opacity = st.slider("Transparency", 0, 100, 60, step=5, key="mp_opacity",
-                                   format="%d%%") / 100
+        # Amenities
+        show_amenities = st.checkbox("Amenities", value=False)
+        if show_amenities:
+            if not center_lat:
+                st.caption("⚠️ Search a location to load amenities.")
+            else:
+                show_mrt          = st.checkbox("🚇 MRT / LRT Stations",  value=True)
+                show_hospitals    = st.checkbox("🏥 Hospitals",            value=False)
+                show_malls        = st.checkbox("🛍️ Shopping Malls",       value=False)
+                show_supermarkets = st.checkbox("🛒 Supermarkets",         value=False)
+                show_schools_am   = st.checkbox("🏫 Schools",              value=False)
+                if show_schools_am:
+                    school_levels = st.multiselect(
+                        "School Level",
+                        ["Kindergartens", "Primary School", "Secondary School",
+                         "Pre-Tertiary", "Tertiary / University"],
+                        default=[],
+                    )
+                show_parks = st.checkbox("🌳 Parks",              value=False)
+                show_cc    = st.checkbox("🏛️ Community Centres",  value=False)
 
     st.markdown("---")
     if st.button("📋 Data Sources & Reference"):
@@ -136,8 +180,10 @@ if center_lat and show_tx:
     filtered = filtered[filtered["distance_m"] <= radius_m]
 
 # ── BUILD LAYERS ──────────────────────────────────────────
-layers = []
+layers          = []
+all_amenity_data = []
 
+# Master Plan (bottom-most overlay)
 if show_mp:
     if not center_lat:
         st.warning("⚠️ Search a location to load Master Plan.")
@@ -146,9 +192,124 @@ if show_mp:
             mp_geojson, _mp_fetched_at = load_masterplan()
         layers += build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m, opacity=mp_opacity)
 
+# Transactions
 if show_tx:
     layers += build_transaction_layer(filtered, tx_view)
 
+# Amenities
+SCHOOL_LEVEL_CODES = {
+    "Kindergartens":        ["KINDERGARTEN"],
+    "Primary School":       ["PRIMARY"],
+    "Secondary School":     ["SECONDARY", "MIXED LEVELS"],
+    "Pre-Tertiary":         ["JUNIOR COLLEGE", "CENTRALISED INSTITUTE"],
+    "Tertiary / University": ["UNIVERSITY", "POLYTECHNIC", "INSTITUTE OF TECHNICAL EDUCATION"],
+}
+
+if show_amenities and center_lat:
+
+    if show_mrt:
+        with st.spinner("Loading MRT/LRT stations..."):
+            mrt_stations, _ = load_mrt_stations()
+        nearby_mrt = [
+            s for s in mrt_stations
+            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= radius_m
+        ]
+        for s in nearby_mrt:
+            s["category"]     = "MRT / LRT Stations"
+            s["distance"]     = haversine(center_lat, center_lon, s["latitude"], s["longitude"])
+            s["walking_mins"] = round(s["distance"] / 80, 0)
+        layers += build_mrt_layer(nearby_mrt)
+        all_amenity_data.extend(nearby_mrt)
+
+    if show_hospitals:
+        with st.spinner("Loading hospitals..."):
+            hospitals = search_onemap_keyword("hospital", center_lat, center_lon, radius_m)
+        for h in hospitals:
+            h["color"]        = [220, 50, 50, 240]
+            h["category"]     = "Hospitals"
+            h["line_label"]   = ""
+            h["walking_mins"] = round(h["distance"] / 80, 0)
+        layers += build_amenity_layer(hospitals)
+        all_amenity_data.extend(hospitals)
+
+    if show_malls:
+        with st.spinner("Loading shopping malls..."):
+            malls = search_onemap_keyword("mall", center_lat, center_lon, radius_m)
+        for m in malls:
+            m["color"]        = [255, 100, 0, 240]
+            m["category"]     = "Shopping Malls"
+            m["line_label"]   = ""
+            m["walking_mins"] = round(m["distance"] / 80, 0)
+        layers += build_amenity_layer(malls)
+        all_amenity_data.extend(malls)
+
+    if show_supermarkets:
+        with st.spinner("Loading supermarkets..."):
+            supermarkets = (
+                search_onemap_keyword("fairprice",         center_lat, center_lon, radius_m) +
+                search_onemap_keyword("cold storage",      center_lat, center_lon, radius_m) +
+                search_onemap_keyword("giant supermarket", center_lat, center_lon, radius_m) +
+                search_onemap_keyword("sheng siong",       center_lat, center_lon, radius_m)
+            )
+        for s in supermarkets:
+            s["color"]        = [255, 150, 0, 240]
+            s["category"]     = "Supermarkets"
+            s["line_label"]   = ""
+            s["walking_mins"] = round(s["distance"] / 80, 0)
+        layers += build_amenity_layer(supermarkets)
+        all_amenity_data.extend(supermarkets)
+
+    if show_schools_am:
+        with st.spinner("Loading schools..."):
+            all_schools, _ = load_schools()
+        level_codes = []
+        for lv in (school_levels or list(SCHOOL_LEVEL_CODES)):
+            level_codes.extend(SCHOOL_LEVEL_CODES.get(lv, []))
+        nearby_schools = [
+            s for s in all_schools
+            if haversine(center_lat, center_lon, s["latitude"], s["longitude"]) <= radius_m
+            and (not level_codes or s.get("level", "") in level_codes)
+        ]
+        for s in nearby_schools:
+            s["color"]        = [0, 153, 0, 240]
+            s["category"]     = "Schools"
+            s["line_label"]   = s.get("level", "")
+            s["distance"]     = haversine(center_lat, center_lon, s["latitude"], s["longitude"])
+            s["walking_mins"] = round(s["distance"] / 80, 0)
+        layers += build_amenity_layer(nearby_schools)
+        all_amenity_data.extend(nearby_schools)
+
+    if show_parks:
+        with st.spinner("Loading parks..."):
+            parks = search_onemap_keyword("park", center_lat, center_lon, radius_m)
+        for p in parks:
+            p["color"]        = [0, 102, 0, 240]
+            p["category"]     = "Parks"
+            p["line_label"]   = ""
+            p["walking_mins"] = round(p["distance"] / 80, 0)
+        layers += build_amenity_layer(parks)
+        all_amenity_data.extend(parks)
+
+    if show_cc:
+        with st.spinner("Loading community centres..."):
+            cc_raw = (
+                search_onemap_keyword("community centre", center_lat, center_lon, radius_m) +
+                search_onemap_keyword("community club",   center_lat, center_lon, radius_m)
+            )
+        seen, cc = set(), []
+        for item in cc_raw:
+            if item["name"] not in seen:
+                seen.add(item["name"])
+                cc.append(item)
+        for c in cc:
+            c["color"]        = [0, 180, 180, 240]
+            c["category"]     = "Community Centres"
+            c["line_label"]   = ""
+            c["walking_mins"] = round(c["distance"] / 80, 0)
+        layers += build_amenity_layer(cc)
+        all_amenity_data.extend(cc)
+
+# Radius ring (on top)
 if center_lat:
     layers += build_radius_ring(center_lat, center_lon, radius_m)
 
@@ -160,10 +321,13 @@ view_state = pdk.ViewState(
     pitch=0,
 )
 
-if show_mp and show_tx:
-    active_tooltip = TOOLTIP_MIXED
+active_layers = [show_tx, show_mp, show_amenities and bool(all_amenity_data)]
+if sum(active_layers) > 1:
+    active_tooltip = TOOLTIP_COMBINED
 elif show_mp:
     active_tooltip = TOOLTIP_MASTERPLAN
+elif show_amenities and all_amenity_data:
+    active_tooltip = TOOLTIP_AMENITY
 else:
     active_tooltip = TOOLTIP_TRANSACTIONS
 
@@ -190,6 +354,26 @@ if show_mp and center_lat:
                 unsafe_allow_html=True,
             )
 
+# ── AMENITIES TABLE ───────────────────────────────────────
+if show_amenities and all_amenity_data:
+    st.markdown("---")
+    st.markdown("### 📍 Nearby Amenities")
+    rows = [{
+        "Name":         a.get("name", ""),
+        "Type":         a.get("line_label") or a.get("category", ""),
+        "Category":     a.get("category", ""),
+        "Distance (m)": int(round(a.get("distance", 0))),
+        "Walk (mins)":  int(round(a.get("distance", 0) / 80)),
+    } for a in all_amenity_data]
+    amenity_df = pd.DataFrame(rows).sort_values(["Category", "Distance (m)"]).reset_index(drop=True)
+    for category, group in amenity_df.groupby("Category"):
+        with st.expander(f"{category} ({len(group)})"):
+            st.dataframe(
+                group[["Name", "Type", "Distance (m)", "Walk (mins)"]].reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )
+
 # ── CHARTS ────────────────────────────────────────────────
 if show_tx and len(filtered) > 0:
     st.markdown("---")
@@ -205,7 +389,6 @@ def _show_data_sources_dialog(df_tx, csv_mtime, tx_min, tx_max):
             if pd.notna(tx_min) and pd.notna(tx_max) else "—"
         )
     )
-
     with st.spinner("Preparing downloads..."):
         mp_geojson, mp_fetched = load_masterplan()
 
@@ -213,37 +396,27 @@ def _show_data_sources_dialog(df_tx, csv_mtime, tx_min, tx_max):
         return ts.strftime("%d %b %Y, %H:%M") if ts else "—"
 
     downloads = {
-        "ura_transactions": (df_tx.to_csv(index=False).encode("utf-8"), "ura_transactions.csv", "text/csv", tx_pulled),
-        "masterplan":       (json.dumps(mp_geojson).encode("utf-8") if mp_geojson else None, "masterplan_2025.geojson", "application/geo+json", _fmt(mp_fetched)),
+        "ura_transactions": (df_tx.to_csv(index=False).encode("utf-8"), "ura_transactions.csv", "text/csv",              tx_pulled),
+        "masterplan":       (json.dumps(mp_geojson).encode("utf-8") if mp_geojson else None,
+                             "masterplan_2025.geojson", "application/geo+json", _fmt(mp_fetched)),
     }
 
     for row in DATA_SOURCES:
-        host_updated = tx_pulled if row["updated"] is None else row["updated"]
-        dl_bytes, dl_file, dl_mime, pulled_str = downloads.get(row["dl_key"], (None, None, None, "—"))
-
-        col_left, col_right = st.columns([3, 2])
+        host_updated                       = tx_pulled if row["updated"] is None else row["updated"]
+        dl_bytes, dl_file, dl_mime, pulled = downloads.get(row["dl_key"], (None, None, None, "—"))
+        col_left, col_right                = st.columns([3, 2])
         with col_left:
             st.markdown(f"**{row['layer']}**")
             st.markdown(f"[{row['source']}]({row['url']})")
             st.caption(f"Host updated: {host_updated}")
         with col_right:
             st.code(row.get("api", "—"), language=None)
-            st.caption(f"Last pulled: {pulled_str}")
+            st.caption(f"Last pulled: {pulled}")
             if dl_bytes:
-                st.download_button(
-                    "⬇️ Download",
-                    data=dl_bytes,
-                    file_name=dl_file,
-                    mime=dl_mime,
-                    key=f"dl_{row['dl_key']}",
-                )
+                st.download_button("⬇️ Download", data=dl_bytes, file_name=dl_file,
+                                   mime=dl_mime, key=f"dl_{row['dl_key']}")
         st.divider()
 
 if st.session_state.get("_open_dialog"):
     st.session_state["_open_dialog"] = False
-    _show_data_sources_dialog(
-        df_tx=df_tx,
-        csv_mtime=_csv_mtime,
-        tx_min=_tx_min,
-        tx_max=_tx_max,
-    )
+    _show_data_sources_dialog(df_tx=df_tx, csv_mtime=_csv_mtime, tx_min=_tx_min, tx_max=_tx_max)

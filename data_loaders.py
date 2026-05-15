@@ -120,6 +120,123 @@ def load_masterplan():
     return None, fetched_at
 
 
+@st.cache_data(ttl=86400)
+def load_mrt_stations():
+    """MRT/LRT stations from data.gov.sg (LTA station exits), deduped by name."""
+    fetched_at = datetime.now()
+    from config import AMENITY_COLORS
+    dataset_id = "d_2c06c9fe8ae724b5d33efa1f203e2c38"
+    poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
+    for _ in range(10):
+        r = requests.get(poll_url).json()
+        if r.get("code") == 0:
+            url = r.get("data", {}).get("url")
+            if url:
+                geojson  = requests.get(url).json()
+                seen     = set()
+                stations = []
+                for f in geojson.get("features", []):
+                    props = f.get("properties", {})
+                    name  = props.get("NAME", "").strip()
+                    if not name or name in seen:
+                        continue
+                    seen.add(name)
+                    coords = f.get("geometry", {}).get("coordinates", [[]])
+                    try:
+                        flat  = coords[0]
+                        lon_s = sum(c[0] for c in flat) / len(flat)
+                        lat_s = sum(c[1] for c in flat) / len(flat)
+                    except:
+                        continue
+                    clean = (name.upper()
+                        .replace(" MRT STATION", "").replace(" LRT STATION", "")
+                        .replace(" INTERCHANGE", "").replace(" STATION", "").strip())
+                    rail_type  = props.get("RAIL_TYPE", "MRT")
+                    color      = AMENITY_COLORS["lrt"] if "LRT" in rail_type.upper() else AMENITY_COLORS["mrt"]
+                    stations.append({
+                        "name":       clean,
+                        "rail_type":  rail_type,
+                        "line_label": rail_type,
+                        "latitude":   lat_s,
+                        "longitude":  lon_s,
+                        "color":      color,
+                    })
+                return stations, fetched_at
+        time.sleep(2)
+    return [], fetched_at
+
+
+@st.cache_data(ttl=86400)
+def load_schools():
+    """MOE school directory from data.gov.sg."""
+    fetched_at = datetime.now()
+    dataset_id = "d_688b934f82c1059ed0a6993d2a829089"
+    poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
+    for _ in range(10):
+        r = requests.get(poll_url).json()
+        if r.get("code") == 0:
+            url = r.get("data", {}).get("url")
+            if url:
+                data    = requests.get(url).json()
+                schools = []
+                for row in data.get("value", data if isinstance(data, list) else []):
+                    try:
+                        schools.append({
+                            "name":      row.get("school_name", ""),
+                            "level":     row.get("mainlevel_code", "").upper().strip(),
+                            "latitude":  float(row.get("latitude", 0)),
+                            "longitude": float(row.get("longitude", 0)),
+                        })
+                    except:
+                        pass
+                return [s for s in schools if s["latitude"] != 0], fetched_at
+        time.sleep(2)
+    return [], fetched_at
+
+
+def search_onemap_keyword(keyword, lat, lon, radius_m):
+    """Keyword search on OneMap public API, filtered to radius. No auth required."""
+    from utils import haversine
+    results = []
+    for page in range(1, 4):
+        url = (
+            f"https://www.onemap.gov.sg/api/common/elastic/search"
+            f"?searchVal={keyword}&returnGeom=Y&getAddrDetails=Y&pageNum={page}"
+        )
+        try:
+            r     = requests.get(url, timeout=10).json()
+            items = r.get("results", [])
+            if not items:
+                break
+            for item in items:
+                try:
+                    lat_i = float(item.get("LATITUDE", 0))
+                    lon_i = float(item.get("LONGITUDE", 0))
+                    if lat_i == 0 and lon_i == 0:
+                        continue
+                    dist = haversine(lat, lon, lat_i, lon_i)
+                    if dist <= radius_m:
+                        name = item.get("BUILDING", "").strip()
+                        if not name or name == "NIL":
+                            name = item.get("ADDRESS", "")
+                        results.append({
+                            "name":      name,
+                            "latitude":  lat_i,
+                            "longitude": lon_i,
+                            "distance":  dist,
+                        })
+                except:
+                    pass
+        except:
+            break
+    seen, deduped = set(), []
+    for r in results:
+        if r["name"] not in seen:
+            seen.add(r["name"])
+            deduped.append(r)
+    return deduped
+
+
 def geocode_address(address):
     url = (
         f"https://www.onemap.gov.sg/api/common/elastic/search"
