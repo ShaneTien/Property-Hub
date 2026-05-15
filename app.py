@@ -48,10 +48,15 @@ _csv_mtime = (
 _tx_min = df_tx["date"].dropna().min()
 _tx_max = df_tx["date"].dropna().max()
 
+# Sorted list of unique months for the play animation
+_play_months = sorted(
+    df_tx["date"].dropna().dt.to_period("M").unique().to_timestamp().tolist()
+)
+
 # ── DEFAULTS ──────────────────────────────────────────────
 tx_view           = "Points"
-hex_radius        = 200
-grid_size         = 500
+hex_radius        = 500
+grid_size         = 1000
 extruded          = False
 segments          = []
 prop_types        = []
@@ -80,6 +85,10 @@ with st.sidebar:
         st.session_state.center_lon       = None
         st.session_state.resolved_address = None
         st.session_state.last_query       = ""
+
+    if "play_month_idx" not in st.session_state:
+        st.session_state.play_month_idx = 0
+        st.session_state.is_playing     = False
 
     if search_query and search_query != st.session_state.last_query:
         lat, lon, addr = geocode_address(search_query)
@@ -133,10 +142,10 @@ with st.sidebar:
                 horizontal=True,
             )
             if tx_view == "Hexagon":
-                hex_radius = st.slider("Hex radius (m)", 100, 1000, 200, step=50)
+                hex_radius = st.slider("Hex radius (m)", 100, 2000, 500, step=100)
                 extruded   = st.checkbox("3D extrusion", value=False)
             elif tx_view == "Grid":
-                grid_size = st.slider("Cell size (m)", 100, 2000, 500, step=100)
+                grid_size = st.slider("Cell size (m)", 100, 5000, 1000, step=100)
                 extruded  = st.checkbox("3D extrusion", value=False)
             segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
             prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
@@ -144,6 +153,20 @@ with st.sidebar:
             min_date   = df_tx["date"].min().to_pydatetime()
             max_date   = df_tx["date"].max().to_pydatetime()
             date_range = st.slider("Contract Date", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="MMM YYYY")
+
+            st.markdown("---")
+            p1, p2 = st.columns([1, 3])
+            with p1:
+                btn_label = "⏸ Pause" if st.session_state.is_playing else "▶ Play"
+                if st.button(btn_label, key="play_btn"):
+                    st.session_state.is_playing = not st.session_state.is_playing
+                    if st.session_state.is_playing:
+                        st.session_state.play_month_idx = 0
+            with p2:
+                if st.session_state.is_playing and _play_months:
+                    cur = _play_months[st.session_state.play_month_idx]
+                    n   = len(_play_months)
+                    st.caption(f"▶ {cur.strftime('%b %Y')}  ({st.session_state.play_month_idx + 1} / {n})")
 
     # Amenities
     show_amenities = st.checkbox("Amenities", value=False)
@@ -175,7 +198,11 @@ radius_m = st.session_state.get("radius_m", 500)
 
 # ── APPLY TRANSACTION FILTERS ─────────────────────────────
 filtered = df_tx.copy()
-if show_tx and date_range:
+if show_tx and st.session_state.get("is_playing") and _play_months:
+    # Animation mode: single month
+    play_date = _play_months[min(st.session_state.play_month_idx, len(_play_months) - 1)]
+    filtered  = filtered[filtered["date"].dt.to_period("M") == pd.Period(play_date, "M")]
+elif show_tx and date_range:
     filtered = filtered[(filtered["date"] >= date_range[0]) & (filtered["date"] <= date_range[1])]
 if segments:
     filtered = filtered[filtered["market_segment"].isin(segments)]
@@ -353,6 +380,10 @@ st.pydeck_chart(pdk.Deck(
     map_style=ONEMAP_BASEMAP,
 ), height=650)
 
+if show_tx and st.session_state.get("is_playing") and _play_months:
+    cur = _play_months[min(st.session_state.play_month_idx, len(_play_months) - 1)]
+    st.markdown(f"### ▶ {cur.strftime('%B %Y')} — {len(filtered):,} transactions")
+
 if show_tx and len(filtered) > 0:
     if tx_view == "Points":
         st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
@@ -456,6 +487,17 @@ def _show_data_sources_dialog(df_tx, csv_mtime, tx_min, tx_max):
             elif dl_key is None:
                 st.caption("Live search — no static dataset")
         st.divider()
+
+# ── ANIMATION ADVANCE ────────────────────────────────────
+if st.session_state.get("is_playing") and show_tx and _play_months:
+    import time
+    time.sleep(0.5)
+    next_idx = st.session_state.play_month_idx + 1
+    if next_idx >= len(_play_months):
+        st.session_state.is_playing = False
+    else:
+        st.session_state.play_month_idx = next_idx
+    st.rerun()
 
 if st.session_state.get("_open_dialog"):
     st.session_state["_open_dialog"] = False
