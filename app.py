@@ -48,110 +48,110 @@ _csv_mtime = (
 _tx_min = df_tx["date"].dropna().min()
 _tx_max = df_tx["date"].dropna().max()
 
-# ── DEFAULTS (overridden by sidebar widgets) ──────────────
-tx_view         = "Points"
-segments        = []
-prop_types      = []
-sale_types      = []
-date_range      = None
-mp_opacity      = 0.6
-show_amenities  = False
-show_mrt        = False
-show_hospitals  = False
-show_malls      = False
+# ── DEFAULTS ──────────────────────────────────────────────
+tx_view           = "Points"
+segments          = []
+prop_types        = []
+sale_types        = []
+date_range        = None
+mp_opacity        = 0.6
+show_amenities    = False
+show_mrt          = False
+show_hospitals    = False
+show_malls        = False
 show_supermarkets = False
-show_schools_am = False
-school_levels   = []
-show_parks      = False
-show_cc         = False
+show_schools_am   = False
+school_levels     = []
+show_parks        = False
+show_cc           = False
 
 # ── SIDEBAR ───────────────────────────────────────────────
 with st.sidebar:
-    tab_search, tab_layers = st.tabs(["📍 Search", "🗺️ Layers"])
 
-    # ── SEARCH TAB ────────────────────────────────────────
-    with tab_search:
-        search_query = st.text_input("Address or project", placeholder="e.g. Orchard Road")
+    # ── SEARCH ────────────────────────────────────────────
+    st.markdown("## 📍 Search")
+    search_query = st.text_input("Address or project", placeholder="e.g. Orchard Road")
 
-        if "center_lat" not in st.session_state:
+    if "center_lat" not in st.session_state:
+        st.session_state.center_lat       = None
+        st.session_state.center_lon       = None
+        st.session_state.resolved_address = None
+        st.session_state.last_query       = ""
+
+    if search_query and search_query != st.session_state.last_query:
+        lat, lon, addr = geocode_address(search_query)
+        if lat:
+            st.session_state.center_lat       = lat
+            st.session_state.center_lon       = lon
+            st.session_state.resolved_address = addr
+            st.session_state.last_query       = search_query
+        else:
             st.session_state.center_lat       = None
             st.session_state.center_lon       = None
             st.session_state.resolved_address = None
-            st.session_state.last_query       = ""
+            st.session_state.last_query       = search_query
 
-        if search_query and search_query != st.session_state.last_query:
-            lat, lon, addr = geocode_address(search_query)
-            if lat:
-                st.session_state.center_lat       = lat
-                st.session_state.center_lon       = lon
-                st.session_state.resolved_address = addr
-                st.session_state.last_query       = search_query
-            else:
-                st.session_state.center_lat       = None
-                st.session_state.center_lon       = None
-                st.session_state.resolved_address = None
-                st.session_state.last_query       = search_query
+    if not search_query:
+        st.session_state.center_lat       = None
+        st.session_state.center_lon       = None
+        st.session_state.resolved_address = None
+        st.session_state.last_query       = ""
 
-        if not search_query:
-            st.session_state.center_lat       = None
-            st.session_state.center_lon       = None
-            st.session_state.resolved_address = None
-            st.session_state.last_query       = ""
+    center_lat       = st.session_state.center_lat
+    center_lon       = st.session_state.center_lon
+    resolved_address = st.session_state.resolved_address
 
-        center_lat       = st.session_state.center_lat
-        center_lon       = st.session_state.center_lon
-        resolved_address = st.session_state.resolved_address
+    if center_lat:
+        st.success(f"📍 {resolved_address}")
+    elif search_query:
+        st.error("Address not found.")
 
-        if center_lat:
-            st.success(f"📍 {resolved_address}")
-        elif search_query:
-            st.error("Address not found.")
+    st.slider("Radius (m)", 250, 2000, 500, step=250, key="radius_m")
 
-        st.slider("Radius (m)", 250, 2000, 500, step=250, key="radius_m")
+    # ── LAYERS ────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("## 🗺️ Layers")
 
-    # ── LAYERS TAB ────────────────────────────────────────
-    with tab_layers:
+    # Master Plan
+    show_mp = st.checkbox("Master Plan 2025", value=False)
+    if show_mp:
+        mp_opacity = st.slider(
+            "Transparency", 0, 100, 60, step=5,
+            key="mp_opacity", format="%d%%"
+        ) / 100
 
-        # Master Plan
-        show_mp = st.checkbox("Master Plan 2025", value=False)
-        if show_mp:
-            mp_opacity = st.slider(
-                "Transparency", 0, 100, 60, step=5,
-                key="mp_opacity", format="%d%%"
-            ) / 100
+    # Transactions
+    show_tx = st.checkbox("Transactions", value=True)
+    if show_tx:
+        with st.expander("Transaction Filters"):
+            tx_view    = st.radio("View", ["Points", "Heatmap"], horizontal=True)
+            segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
+            prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
+            sale_types = st.multiselect("Type of Sale", ["1 - New Sale", "2 - Sub Sale", "3 - Resale"], default=[])
+            min_date   = df_tx["date"].min().to_pydatetime()
+            max_date   = df_tx["date"].max().to_pydatetime()
+            date_range = st.slider("Contract Date", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="MMM YYYY")
 
-        # Transactions
-        show_tx = st.checkbox("Transactions", value=True)
-        if show_tx:
-            with st.expander("Transaction Filters"):
-                tx_view    = st.radio("View", ["Points", "Heatmap"], horizontal=True)
-                segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
-                prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
-                sale_types = st.multiselect("Type of Sale", ["1 - New Sale", "2 - Sub Sale", "3 - Resale"], default=[])
-                min_date   = df_tx["date"].min().to_pydatetime()
-                max_date   = df_tx["date"].max().to_pydatetime()
-                date_range = st.slider("Contract Date", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="MMM YYYY")
-
-        # Amenities
-        show_amenities = st.checkbox("Amenities", value=False)
-        if show_amenities:
-            if not center_lat:
-                st.caption("⚠️ Search a location to load amenities.")
-            else:
-                show_mrt          = st.checkbox("🚇 MRT / LRT Stations",  value=True)
-                show_hospitals    = st.checkbox("🏥 Hospitals",            value=False)
-                show_malls        = st.checkbox("🛍️ Shopping Malls",       value=False)
-                show_supermarkets = st.checkbox("🛒 Supermarkets",         value=False)
-                show_schools_am   = st.checkbox("🏫 Schools",              value=False)
-                if show_schools_am:
-                    school_levels = st.multiselect(
-                        "School Level",
-                        ["Kindergartens", "Primary School", "Secondary School",
-                         "Pre-Tertiary", "Tertiary / University"],
-                        default=[],
-                    )
-                show_parks = st.checkbox("🌳 Parks",              value=False)
-                show_cc    = st.checkbox("🏛️ Community Centres",  value=False)
+    # Amenities
+    show_amenities = st.checkbox("Amenities", value=False)
+    if show_amenities:
+        if not center_lat:
+            st.caption("⚠️ Search a location to load amenities.")
+        else:
+            show_mrt          = st.checkbox("🚇 MRT / LRT Stations",  value=True)
+            show_hospitals    = st.checkbox("🏥 Hospitals",            value=False)
+            show_malls        = st.checkbox("🛍️ Shopping Malls",       value=False)
+            show_supermarkets = st.checkbox("🛒 Supermarkets",         value=False)
+            show_schools_am   = st.checkbox("🏫 Schools",              value=False)
+            if show_schools_am:
+                school_levels = st.multiselect(
+                    "School Level",
+                    ["Kindergartens", "Primary School", "Secondary School",
+                     "Pre-Tertiary", "Tertiary / University"],
+                    default=[],
+                )
+            show_parks = st.checkbox("🌳 Parks",             value=False)
+            show_cc    = st.checkbox("🏛️ Community Centres", value=False)
 
     st.markdown("---")
     if st.button("📋 Data Sources & Reference"):
@@ -180,17 +180,14 @@ if center_lat and show_tx:
     filtered = filtered[filtered["distance_m"] <= radius_m]
 
 # ── BUILD LAYERS ──────────────────────────────────────────
-layers          = []
+layers           = []
 all_amenity_data = []
 
-# Master Plan (bottom-most overlay)
+# Master Plan (full island, no location required)
 if show_mp:
-    if not center_lat:
-        st.warning("⚠️ Search a location to load Master Plan.")
-    else:
-        with st.spinner("Loading Master Plan 2025..."):
-            mp_geojson, _mp_fetched_at = load_masterplan()
-        layers += build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m, opacity=mp_opacity)
+    with st.spinner("Loading Master Plan 2025..."):
+        mp_geojson, _mp_fetched_at = load_masterplan()
+    layers += build_masterplan_layer(mp_geojson, opacity=mp_opacity)
 
 # Transactions
 if show_tx:
@@ -198,10 +195,10 @@ if show_tx:
 
 # Amenities
 SCHOOL_LEVEL_CODES = {
-    "Kindergartens":        ["KINDERGARTEN"],
-    "Primary School":       ["PRIMARY"],
-    "Secondary School":     ["SECONDARY", "MIXED LEVELS"],
-    "Pre-Tertiary":         ["JUNIOR COLLEGE", "CENTRALISED INSTITUTE"],
+    "Kindergartens":         ["KINDERGARTEN"],
+    "Primary School":        ["PRIMARY"],
+    "Secondary School":      ["SECONDARY", "MIXED LEVELS"],
+    "Pre-Tertiary":          ["JUNIOR COLLEGE", "CENTRALISED INSTITUTE"],
     "Tertiary / University": ["UNIVERSITY", "POLYTECHNIC", "INSTITUTE OF TECHNICAL EDUCATION"],
 }
 
@@ -342,7 +339,7 @@ if show_tx and tx_view == "Points" and len(filtered) > 0:
     st.markdown("🟢 Low PSF &nbsp;&nbsp;&nbsp; 🔴 High PSF")
 
 # ── MASTER PLAN LEGEND ────────────────────────────────────
-if show_mp and center_lat:
+if show_mp:
     with st.expander("Master Plan 2025 — Land Use Legend"):
         cols = st.columns(4)
         for i, (lu, color) in enumerate(LAND_USE_COLORS.items()):
@@ -389,32 +386,54 @@ def _show_data_sources_dialog(df_tx, csv_mtime, tx_min, tx_max):
             if pd.notna(tx_min) and pd.notna(tx_max) else "—"
         )
     )
+
     with st.spinner("Preparing downloads..."):
-        mp_geojson, mp_fetched = load_masterplan()
+        mp_geojson,   mp_fetched  = load_masterplan()
+        mrt_stations, mrt_fetched = load_mrt_stations()
+        all_schools,  sch_fetched = load_schools()
 
     def _fmt(ts):
         return ts.strftime("%d %b %Y, %H:%M") if ts else "—"
 
+    def _csv(rows):
+        return pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
+
+    mrt_csv = _csv([{
+        "name": s["name"], "rail_type": s.get("rail_type", ""),
+        "latitude": s["latitude"], "longitude": s["longitude"],
+    } for s in mrt_stations]) if mrt_stations else None
+
+    sch_csv = _csv([{
+        "name": s["name"], "level": s.get("level", ""),
+        "latitude": s["latitude"], "longitude": s["longitude"],
+    } for s in all_schools]) if all_schools else None
+
     downloads = {
-        "ura_transactions": (df_tx.to_csv(index=False).encode("utf-8"), "ura_transactions.csv", "text/csv",              tx_pulled),
+        "ura_transactions": (df_tx.to_csv(index=False).encode("utf-8"), "ura_transactions.csv",   "text/csv",              tx_pulled),
         "masterplan":       (json.dumps(mp_geojson).encode("utf-8") if mp_geojson else None,
                              "masterplan_2025.geojson", "application/geo+json", _fmt(mp_fetched)),
+        "mrt":              (mrt_csv, "mrt_stations.csv",  "text/csv",              _fmt(mrt_fetched)),
+        "schools":          (sch_csv, "schools.csv",       "text/csv",              _fmt(sch_fetched)),
     }
 
     for row in DATA_SOURCES:
-        host_updated                       = tx_pulled if row["updated"] is None else row["updated"]
-        dl_bytes, dl_file, dl_mime, pulled = downloads.get(row["dl_key"], (None, None, None, "—"))
-        col_left, col_right                = st.columns([3, 2])
+        host_updated                        = tx_pulled if row["updated"] is None else row["updated"]
+        dl_key                              = row.get("dl_key")
+        dl_bytes, dl_file, dl_mime, pulled  = downloads.get(dl_key, (None, None, None, "—"))
+
+        col_left, col_right = st.columns([3, 2])
         with col_left:
             st.markdown(f"**{row['layer']}**")
             st.markdown(f"[{row['source']}]({row['url']})")
             st.caption(f"Host updated: {host_updated}")
         with col_right:
             st.code(row.get("api", "—"), language=None)
-            st.caption(f"Last pulled: {pulled}")
+            st.caption(f"Last pulled: {pulled if dl_key else '—'}")
             if dl_bytes:
                 st.download_button("⬇️ Download", data=dl_bytes, file_name=dl_file,
-                                   mime=dl_mime, key=f"dl_{row['dl_key']}")
+                                   mime=dl_mime, key=f"dl_{dl_key}")
+            elif dl_key is None:
+                st.caption("Live search — no static dataset")
         st.divider()
 
 if st.session_state.get("_open_dialog"):

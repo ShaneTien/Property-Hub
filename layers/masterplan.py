@@ -1,9 +1,8 @@
 import pydeck as pdk
-from utils import haversine
 from config import LAND_USE_COLORS, DEFAULT_MP_COLOR
 
 
-def build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m, opacity=0.6):
+def build_masterplan_layer(mp_geojson, opacity=0.6):
     if not mp_geojson:
         return []
 
@@ -13,14 +12,6 @@ def build_masterplan_layer(mp_geojson, center_lat, center_lon, radius_m, opacity
         gpr    = f.get("properties", {}).get("GPR", "")
         color  = LAND_USE_COLORS.get(lu.upper(), DEFAULT_MP_COLOR)
         coords = f["geometry"]["coordinates"]
-        try:
-            flat  = coords[0] if isinstance(coords[0][0], list) else coords
-            c_lon = sum(c[0] for c in flat) / len(flat)
-            c_lat = sum(c[1] for c in flat) / len(flat)
-            if haversine(center_lat, center_lon, c_lat, c_lon) > radius_m * 2:
-                continue
-        except:
-            continue
         mp_data.append({
             "coordinates": coords,
             "lu_desc":     lu,
