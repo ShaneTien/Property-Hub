@@ -107,7 +107,14 @@ def _load_transactions_from_api(access_key):
 
 @st.cache_data(ttl=86400)
 def load_masterplan():
-    fetched_at = datetime.now()
+    import json, gzip, os
+    fetched_at   = datetime.now()
+    local_path   = os.path.join(os.path.dirname(__file__), "data", "masterplan.geojson.gz")
+    if os.path.exists(local_path):
+        print("Loading masterplan from local file...")
+        with gzip.open(local_path, "rt", encoding="utf-8") as f:
+            return json.load(f), fetched_at
+    print("Fetching masterplan from data.gov.sg API...")
     dataset_id = "d_a8c3546b26712e35021f3a681d0353ae"
     poll_url   = f"https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download"
     for _ in range(15):
