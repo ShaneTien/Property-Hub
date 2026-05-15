@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pydeck as pdk
 import pandas as pd
@@ -49,6 +50,14 @@ except:
 # ── LOAD TRANSACTIONS ────────────────────────────────────
 with st.spinner("Loading URA transaction data..."):
     df_tx = load_transactions(access_key)
+
+_csv_path  = os.path.join(os.path.dirname(__file__), "data", "ura_transactions.csv")
+_csv_mtime = (
+    pd.Timestamp(os.path.getmtime(_csv_path), unit="s", tz="UTC").tz_localize(None)
+    if os.path.exists(_csv_path) else None
+)
+_tx_min = df_tx["date"].dropna().min()
+_tx_max = df_tx["date"].dropna().max()
 
 # ── SIDEBAR: SEARCH ──────────────────────────────────────
 st.sidebar.markdown("## 🔍 Location Search")
@@ -435,10 +444,33 @@ if show_tx and len(filtered) > 0:
     st.markdown("---")
     render_charts(filtered)
 
-# ── SIDEBAR: DATA SUMMARY ────────────────────────────────
+# ── DATA SOURCES DIALOG ──────────────────────────────────
+@st.dialog("Data Sources & Reference", width="large")
+def _show_data_sources_dialog():
+    tx_updated = (
+        _csv_mtime.strftime("%d %b %Y, %H:%M")
+        if _csv_mtime is not None
+        else (
+            f"{_tx_min.strftime('%b %Y')} – {_tx_max.strftime('%b %Y')}"
+            if pd.notna(_tx_min) and pd.notna(_tx_max)
+            else "Unknown"
+        )
+    )
+    header = st.columns([2, 4, 2])
+    header[0].markdown("**Layer**")
+    header[1].markdown("**Source**")
+    header[2].markdown("**Last Updated**")
+    st.divider()
+    for row in DATA_SOURCES:
+        updated = tx_updated if row["updated"] is None else row["updated"]
+        col1, col2, col3 = st.columns([2, 4, 2])
+        col1.markdown(row["layer"])
+        col2.markdown(f"[{row['source']}]({row['url']})")
+        col3.markdown(updated)
+
+# ── SIDEBAR: FOOTER ──────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.markdown("## 📋 Data Sources")
-for row in DATA_SOURCES:
-    st.sidebar.markdown(f"**{row['Layer']}** · {row['Source']}  \n*Updated: {row['Updated']}*")
+if st.sidebar.button("📋 Data Sources & Reference"):
+    _show_data_sources_dialog()
 
 st.sidebar.caption("Property Hub · URA · OneMap · data.gov.sg")

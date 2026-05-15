@@ -58,11 +58,60 @@ MRT_COLOR = [0, 102, 204, 240]
 
 # ── DATA SOURCES SUMMARY ─────────────────────────────────
 DATA_SOURCES = [
-    {"Layer": "Transactions",   "Source": "URA Data Service",  "Updated": "Tue & Fri"},
-    {"Layer": "GLS Sites",      "Source": "data.gov.sg (URA)", "Updated": "Dec 2025"},
-    {"Layer": "Master Plan",    "Source": "data.gov.sg (URA)", "Updated": "Dec 2025"},
-    {"Layer": "MRT Stations",   "Source": "data.gov.sg (LTA)", "Updated": "Ongoing"},
-    {"Layer": "Amenities",      "Source": "OneMap Themes",     "Updated": "Various"},
+    {
+        "layer":   "URA Transactions",
+        "source":  "URA Data Service API",
+        "url":     "https://www.ura.gov.sg/maps/api/",
+        "updated": None,  # filled dynamically from CSV mtime
+    },
+    {
+        "layer":   "GLS Sites",
+        "source":  "data.gov.sg — URA Government Land Sales",
+        "url":     "https://data.gov.sg/datasets/d_0e2b42f98535686282031a42c9c7b05a/view",
+        "updated": "Dec 2025",
+    },
+    {
+        "layer":   "Master Plan 2025",
+        "source":  "data.gov.sg — URA Master Plan 2025 Land Use",
+        "url":     "https://data.gov.sg/datasets/d_a8c3546b26712e35021f3a681d0353ae/view",
+        "updated": "Dec 2025",
+    },
+    {
+        "layer":   "MRT / LRT Stations",
+        "source":  "data.gov.sg — LTA MRT Station Exit",
+        "url":     "https://data.gov.sg/datasets/d_2c06c9fe8ae724b5d33efa1f203e2c38/view",
+        "updated": "Ongoing",
+    },
+    {
+        "layer":   "Planning Area Boundaries",
+        "source":  "data.gov.sg — MP2019 Planning Area Boundary",
+        "url":     "https://data.gov.sg/datasets/d_bf4d24df9129d5a8ff8cf82e20959ee0/view",
+        "updated": "Mar 2019",
+    },
+    {
+        "layer":   "Demographics — Age",
+        "source":  "data.gov.sg — Census of Population 2020",
+        "url":     "https://data.gov.sg/datasets/d_d95ae740c0f8961a0b10435836660ce0/view",
+        "updated": "Jun 2021",
+    },
+    {
+        "layer":   "Demographics — Dwelling",
+        "source":  "data.gov.sg — Census of Population 2020",
+        "url":     "https://data.gov.sg/datasets/d_7f243956483d5901f237e6f87b096636/view",
+        "updated": "Jun 2021",
+    },
+    {
+        "layer":   "Schools",
+        "source":  "data.gov.sg — MOE School Directory",
+        "url":     "https://data.gov.sg/datasets/d_688b934f82c1059ed0a6993d2a829089/view",
+        "updated": "Ongoing",
+    },
+    {
+        "layer":   "Amenities",
+        "source":  "OneMap Themes API",
+        "url":     "https://www.onemap.gov.sg/apidocs/",
+        "updated": "Various",
+    },
 ]
 
 # ── MRT LINE COLOURS ─────────────────────────────────────
