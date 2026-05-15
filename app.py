@@ -58,7 +58,7 @@ tx_view           = "Points"
 hex_radius        = 200
 grid_size         = 400
 extruded          = False
-elevation_scale   = 4
+max_elevation     = 500
 segments          = []
 prop_types        = []
 sale_types        = []
@@ -146,12 +146,12 @@ with st.sidebar:
                 hex_radius = st.slider("Hex radius (m)", 25, 2000, 200, step=25)
                 extruded   = st.checkbox("3D extrusion", value=False)
                 if extruded:
-                    elevation_scale = st.slider("Height scale", 1, 20, 4, step=1)
+                    max_elevation = st.slider("Max height (m)", 50, 5000, 500, step=50)
             elif tx_view == "Grid":
                 grid_size = st.slider("Cell size (m)", 25, 5000, 400, step=25)
                 extruded  = st.checkbox("3D extrusion", value=False)
                 if extruded:
-                    elevation_scale = st.slider("Height scale", 1, 20, 4, step=1)
+                    max_elevation = st.slider("Max height (m)", 50, 5000, 500, step=50)
             segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
             prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
             sale_types = st.multiselect("Type of Sale", ["1 - New Sale", "2 - Sub Sale", "3 - Resale"], default=[])
@@ -239,7 +239,7 @@ if show_tx:
     layers += build_transaction_layer(
         filtered, tx_view,
         hex_radius=hex_radius, grid_size=grid_size,
-        extruded=extruded, elevation_scale=elevation_scale,
+        extruded=extruded, max_elevation=max_elevation,
     )
 
 # Amenities

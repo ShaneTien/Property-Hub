@@ -4,7 +4,7 @@ from utils import psf_to_color
 
 def build_transaction_layer(filtered, tx_view,
                              hex_radius=200, grid_size=400,
-                             extruded=False, elevation_scale=4):
+                             extruded=False, max_elevation=500):
     if len(filtered) == 0:
         return []
 
@@ -25,7 +25,7 @@ def build_transaction_layer(filtered, tx_view,
             data=data,
             get_position=["longitude", "latitude"],
             radius=hex_radius,
-            elevation_scale=elevation_scale,
+            elevation_range=[0, max_elevation],
             extruded=extruded,
             pickable=True,
             auto_highlight=True,
@@ -40,7 +40,7 @@ def build_transaction_layer(filtered, tx_view,
             data=data,
             get_position=["longitude", "latitude"],
             cell_size=grid_size,
-            elevation_scale=elevation_scale,
+            elevation_range=[0, max_elevation],
             extruded=extruded,
             pickable=True,
             auto_highlight=True,
