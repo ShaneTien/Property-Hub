@@ -55,9 +55,10 @@ _play_months = sorted(
 
 # ── DEFAULTS ──────────────────────────────────────────────
 tx_view           = "Points"
-hex_radius        = 500
-grid_size         = 1000
+hex_radius        = 200
+grid_size         = 400
 extruded          = False
+elevation_scale   = 4
 segments          = []
 prop_types        = []
 sale_types        = []
@@ -142,11 +143,15 @@ with st.sidebar:
                 horizontal=True,
             )
             if tx_view == "Hexagon":
-                hex_radius = st.slider("Hex radius (m)", 100, 2000, 500, step=100)
+                hex_radius = st.slider("Hex radius (m)", 25, 2000, 200, step=25)
                 extruded   = st.checkbox("3D extrusion", value=False)
+                if extruded:
+                    elevation_scale = st.slider("Height scale", 1, 20, 4, step=1)
             elif tx_view == "Grid":
-                grid_size = st.slider("Cell size (m)", 100, 5000, 1000, step=100)
+                grid_size = st.slider("Cell size (m)", 25, 5000, 400, step=25)
                 extruded  = st.checkbox("3D extrusion", value=False)
+                if extruded:
+                    elevation_scale = st.slider("Height scale", 1, 20, 4, step=1)
             segments   = st.multiselect("Market Segment", ["CCR", "RCR", "OCR"], default=[])
             prop_types = st.multiselect("Property Type", sorted(df_tx["property_type"].dropna().unique()), default=[])
             sale_types = st.multiselect("Type of Sale", ["1 - New Sale", "2 - Sub Sale", "3 - Resale"], default=[])
@@ -233,7 +238,8 @@ if show_mp:
 if show_tx:
     layers += build_transaction_layer(
         filtered, tx_view,
-        hex_radius=hex_radius, grid_size=grid_size, extruded=extruded,
+        hex_radius=hex_radius, grid_size=grid_size,
+        extruded=extruded, elevation_scale=elevation_scale,
     )
 
 # Amenities
