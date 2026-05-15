@@ -9,7 +9,6 @@ TRANSFORMER = Transformer.from_crs("EPSG:3414", "EPSG:4326", always_xy=True)
 
 
 @st.cache_data(ttl=43200)
-@st.cache_data(ttl=43200)
 def load_transactions(access_key=None):
     """Load from cached CSV in repo. Falls back to API if CSV missing."""
     import os
@@ -362,12 +361,11 @@ def load_planning_area_boundaries():
 
 
 @st.cache_data(ttl=86400)
-@st.cache_data(ttl=86400)
 def load_demographics():
     """Load Census 2020 population by planning area."""
     results = {}
 
-    # Age data — filter for planning area totals (rows ending in " - Total")
+    # Age data — rows ending in " - Total" are planning area totals
     age_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_d95ae740c0f8961a0b10435836660ce0&limit=500"
     try:
         age_records = requests.get(age_url, timeout=15).json().get("result", {}).get("records", [])
@@ -376,18 +374,14 @@ def load_demographics():
             if not number.endswith(" - Total"):
                 continue
             pa = number.replace(" - Total", "").upper().strip()
-            total = int(row.get("Total_Total", 0) or 0)
-            young = sum(int(row.get(f"Total_{g}", 0) or 0) for g in ["0_4", "5_9", "10_14", "15_19", "20_24"])
+            total   = int(row.get("Total_Total", 0) or 0)
+            young   = sum(int(row.get(f"Total_{g}", 0) or 0) for g in ["0_4", "5_9", "10_14", "15_19", "20_24"])
             elderly = sum(int(row.get(f"Total_{g}", 0) or 0) for g in ["65_69", "70_74", "75_79", "80_84", "85_89", "90andOver"])
-            results[pa] = {
-                "total_pop": total,
-                "young":     young,
-                "elderly":   elderly,
-            }
+            results[pa] = {"total_pop": total, "young": young, "elderly": elderly}
     except Exception as e:
         print(f"Age data error: {e}")
 
-    # Dwelling data — same filter
+    # Dwelling data — same row filter
     dwell_url = "https://data.gov.sg/api/action/datastore_search?resource_id=d_7f243956483d5901f237e6f87b096636&limit=500"
     try:
         dwell_records = requests.get(dwell_url, timeout=15).json().get("result", {}).get("records", [])
@@ -395,16 +389,16 @@ def load_demographics():
             number = row.get("Number", "")
             if not number.endswith(" - Total"):
                 continue
-            pa = number.replace(" - Total", "").upper().strip()
-            total = int(row.get("Total", 0) or 0)
-            hdb = int(row.get("HDBDwellings_Total", 0) or 0)
-            condo = int(row.get("CondominiumsandOtherApartments", 0) or 0)
-            landed = int(row.get("LandedProperties", 0) or 0)
+            pa      = number.replace(" - Total", "").upper().strip()
+            total   = int(row.get("Total", 0) or 0)
+            hdb     = int(row.get("HDBDwellings_Total", 0) or 0)
+            condo   = int(row.get("CondominiumsandOtherApartments", 0) or 0)
+            landed  = int(row.get("LandedProperties", 0) or 0)
             if pa not in results:
-                results[pa] = {"total_pop": total, "young": 0, "elderly": 0}
-            results[pa]["hdb"]     = hdb
-            results[pa]["condo"]   = condo
-            results[pa]["landed"]  = landed
+                results[pa] = {"total_pop": 0, "young": 0, "elderly": 0}
+            results[pa]["hdb"]        = hdb
+            results[pa]["condo"]      = condo
+            results[pa]["landed"]     = landed
             results[pa]["dwell_total"] = total
     except Exception as e:
         print(f"Dwelling data error: {e}")
